@@ -1,0 +1,40 @@
+### Testing Sample Medicines
+
+1. First, ensure your backend server is running:
+   ```bash
+   cd backend
+   npm run dev
+   ```
+
+2. In a new terminal, seed the database with sample medicines:
+   ```bash
+   cd backend
+   npm run seed:medicines
+   ```
+   This will:
+   - Clear any existing medicines
+   - Add 6 sample medicines with different:
+     - Categories (pain-relief, antibiotics, vitamins, prescription, over-the-counter)
+     - Storage requirements (cold, extreme_cold, hot, extreme_hot)
+     - Price units (strip, box, bottle, vial)
+     - Prescription requirements
+     - Stock levels and expiry dates
+
+3. Test the following features with the sample data:
+   - View all medicines in the inventory
+   - Search medicines by name, description, or composition
+   - Filter medicines by category
+   - Sort medicines by different fields
+   - Archive some medicines
+   - View archived medicines
+   - Check storage requirements display
+   - Verify price units display
+
+4. After testing, you can clean up the sample data:
+   ```bash
+   cd backend
+   npm run delete:medicines
+   ```
+   This will remove all medicines from the database.
+
+Note: The sample medicines include a variety of real-world scenarios to help test all features of the application. 

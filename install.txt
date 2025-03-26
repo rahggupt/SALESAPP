@@ -1,0 +1,342 @@
+# Medicine Shop Management System - Installation Guide
+
+## Prerequisites
+- Node.js (v14+)
+- MongoDB (v4.4+)
+- npm or yarn
+- AWS Account (for S3 storage)
+
+## Setup Instructions
+
+### 1. Clone the repository
+```bash
+git clone <repository-url>
+cd SalesApp
+```
+
+### 2. Backend Setup
+```bash
+# Navigate to the backend directory
+cd backend
+
+# Install dependencies
+npm install
+
+# Set up environment variables
+# Create a .env file with the following variables:
+# - MONGODB_URI=mongodb://localhost:27017/medicine-shop
+# - JWT_SECRET=your-secret-key
+# - PORT=5000
+# - AWS_ACCESS_KEY_ID=your-aws-access-key
+# - AWS_SECRET_ACCESS_KEY=your-aws-secret-key
+# - AWS_REGION=your-aws-region
+# - AWS_S3_BUCKET_NAME=your-s3-bucket-name
+
+# Seed the database with initial data (admin and viewer users)
+npm run seed
+
+# Start the backend server
+npm start
+```
+
+### 3. S3 Bucket Setup
+```bash
+# You need to create an S3 bucket in your AWS account with the following settings:
+# 1. Choose a globally unique bucket name
+# 2. Select the region closest to your users
+# 3. Enable "Block all public access" for security
+# 4. Create a dedicated IAM user with the following policies:
+#    - AmazonS3FullAccess (or a more restrictive custom policy for your bucket only)
+# 5. Generate access keys for this IAM user and add them to your .env file
+```
+
+### 4. Frontend Setup
+```bash
+# Open a new terminal and navigate to the frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the frontend application
+npm start
+```
+
+The application will be available at: http://localhost:3000
+
+## Available User Accounts
+
+The seed script creates the following default users:
+
+1. **Admin User**
+   - Username: `admin`
+   - Password: `admin123`
+   - Role: Full administrative access (add medicines, manage prescriptions)
+
+2. **Viewer User**
+   - Username: `viewer`
+   - Password: `viewer123`
+   - Role: View-only access (can only view medicine prices)
+
+You can also create regular users through the MongoDB CLI or by modifying the seed script.
+
+## Role Permissions
+
+- **Admin**: Can add/edit medicines, manage prescriptions, view all data
+- **User**: Can create prescriptions, view medicines, but cannot add new medicines
+- **Viewer**: Can only view medicine prices
+
+## MongoDB CLI Guide
+
+For database management, refer to the `MONGODB_GUIDE.md` file which contains instructions for:
+- Connecting to the MongoDB CLI
+- Viewing and managing users
+- Changing passwords
+- Managing medicines
+- Backup and restore procedures
+
+## Troubleshooting
+
+1. If you encounter issues with the backend server, check:
+   - MongoDB is running and accessible
+   - Port 5000 is not in use by another process
+   - AWS S3 credentials are correct and the IAM user has proper permissions
+
+2. If you encounter login issues:
+   - Try running the seed script again: `npm run seed`
+   - Check MongoDB connection in the backend logs
+
+3. For frontend issues:
+   - Clear browser cache or try incognito mode
+   - Check browser console for errors
+   - Verify API endpoints in the network tab
+
+4. For S3 storage issues:
+   - Verify AWS credentials are correct in the .env file
+   - Check S3 bucket permissions
+   - Ensure your IAM user has proper S3 access
+
+## Manual Password Reset
+
+To manually reset a password:
+1. Run the seed script again: `npm run seed` (this will reset all users)
+2. Or use the MongoDB CLI as described in MONGODB_GUIDE.md
+
+## API Endpoints with curl Examples
+
+### Authentication
+
+#### Login
+```bash
+curl -X POST \
+  http://localhost:5000/api/auth/login \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "username": "admin",
+    "password": "admin123"
+}'
+```
+
+#### Register User (Admin only)
+```bash
+curl -X POST \
+  http://localhost:5000/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN' \
+  -d '{
+    "username": "newuser",
+    "password": "password123",
+    "role": "user"
+}'
+```
+
+#### Get Current User
+```bash
+curl -X GET \
+  http://localhost:5000/api/auth/me \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+### Medicines
+
+#### Get All Medicines
+```bash
+curl -X GET \
+  http://localhost:5000/api/medicines \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Get Medicine Count
+```bash
+curl -X GET \
+  http://localhost:5000/api/medicines/stats/count \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Get Medicine by ID
+```bash
+curl -X GET \
+  http://localhost:5000/api/medicines/MEDICINE_ID \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Add New Medicine (Admin only)
+```bash
+curl -X POST \
+  http://localhost:5000/api/medicines \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN' \
+  -d '{
+    "name": "Paracetamol",
+    "description": "Pain reliever and fever reducer",
+    "price": 5.99,
+    "stock": 100,
+    "category": "Pain Relief",
+    "expiryDate": "2024-12-31"
+}'
+```
+
+#### Update Medicine (Admin only)
+```bash
+curl -X PUT \
+  http://localhost:5000/api/medicines/MEDICINE_ID \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN' \
+  -d '{
+    "price": 6.99,
+    "stock": 150
+}'
+```
+
+#### Delete Medicine (Admin only)
+```bash
+curl -X DELETE \
+  http://localhost:5000/api/medicines/MEDICINE_ID \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN'
+```
+
+### Prescriptions
+
+#### Get All Prescriptions
+```bash
+curl -X GET \
+  http://localhost:5000/api/prescriptions \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Get Prescription Count
+```bash
+curl -X GET \
+  http://localhost:5000/api/prescriptions/stats/count \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Get Prescription by ID
+```bash
+curl -X GET \
+  http://localhost:5000/api/prescriptions/PRESCRIPTION_ID \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Upload Prescription Image (Uses S3 Storage)
+```bash
+curl -X POST \
+  http://localhost:5000/api/prescriptions/upload \
+  -H 'Authorization: Bearer YOUR_TOKEN' \
+  -H 'Content-Type: multipart/form-data' \
+  -F 'prescriptionImage=@/path/to/image.jpg' \
+  -F 'patientName=John Doe' \
+  -F 'doctorName=Dr. Smith' \
+  -F 'notes=Take twice daily'
+```
+
+#### Update Prescription Status (Admin only)
+```bash
+curl -X PUT \
+  http://localhost:5000/api/prescriptions/PRESCRIPTION_ID/status \
+  -H 'Content-Type: application/json' \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN' \
+  -d '{
+    "status": "approved"
+}'
+```
+
+#### Delete Prescription
+```bash
+curl -X DELETE \
+  http://localhost:5000/api/prescriptions/PRESCRIPTION_ID \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+### Sales
+
+#### Get All Sales
+```bash
+curl -X GET \
+  http://localhost:5000/api/sales \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Get Total Sales Amount (Admin only)
+```bash
+curl -X GET \
+  http://localhost:5000/api/sales/stats/total \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN'
+```
+
+#### Get Daily Sales Statistics (Admin only)
+```bash
+curl -X GET \
+  http://localhost:5000/api/sales/stats/daily \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN'
+```
+
+#### Get Sales by Customer Name
+```bash
+curl -X GET \
+  http://localhost:5000/api/sales/customer/John \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Get Sale by ID
+```bash
+curl -X GET \
+  http://localhost:5000/api/sales/SALE_ID \
+  -H 'Authorization: Bearer YOUR_TOKEN'
+```
+
+#### Create New Sale
+```bash
+curl -X POST \
+  http://localhost:5000/api/sales \
+  -H 'Content-Type: multipart/form-data' \
+  -H 'Authorization: Bearer YOUR_TOKEN' \
+  -F 'saleData={
+    "customerName": "John Doe",
+    "customerPhone": "123-456-7890",
+    "customerEmail": "john@example.com",
+    "paymentMethod": "cash",
+    "items": [
+      {
+        "medicineId": "MEDICINE_ID",
+        "medicineName": "Paracetamol",
+        "quantity": 2,
+        "price": 5.99,
+        "discount": 0
+      }
+    ],
+    "notes": "Regular customer",
+    "total": 11.98
+  }' \
+  -F 'prescriptionImage=@/path/to/prescription.jpg'
+```
+
+#### Delete Sale (Admin only)
+```bash
+curl -X DELETE \
+  http://localhost:5000/api/sales/SALE_ID \
+  -H 'Authorization: Bearer YOUR_ADMIN_TOKEN'
+```
+
+Note: Replace `YOUR_TOKEN`, `YOUR_ADMIN_TOKEN`, `MEDICINE_ID`, `PRESCRIPTION_ID`, and `SALE_ID` with actual values.
+
