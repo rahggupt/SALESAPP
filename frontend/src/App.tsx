@@ -24,17 +24,17 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
           <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/medicines" element={<PrivateRoute><MedicineList /></PrivateRoute>} />
-          <Route path="/medicines/add" element={<PrivateRoute><AddMedicine /></PrivateRoute>} />
-          <Route path="/prescriptions" element={<PrivateRoute><PrescriptionList /></PrivateRoute>} />
-          <Route path="/prescriptions/add" element={<PrivateRoute><AddPrescription /></PrivateRoute>} />
-          <Route path="/scan-prescription" element={<PrivateRoute><ScanPrescription /></PrivateRoute>} />
-          <Route path="/sales/new" element={<PrivateRoute><SalesEntry /></PrivateRoute>} />
-          <Route path="/sales/history" element={<PrivateRoute><SalesHistory /></PrivateRoute>} />
-          <Route path="/sales/receivables" element={<PrivateRoute><ReceivablesList /></PrivateRoute>} />
-          <Route path="/prices" element={<PrivateRoute><ViewPrices /></PrivateRoute>} />
-          <Route path="/vendors" element={<PrivateRoute><VendorManagement /></PrivateRoute>} />
-          <Route path="/vendors/payables" element={<PrivateRoute><VendorPayables /></PrivateRoute>} />
+          <Route path="/medicines" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><MedicineList /></PrivateRoute>} />
+          <Route path="/medicines/add" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><AddMedicine /></PrivateRoute>} />
+          <Route path="/prescriptions" element={<PrivateRoute allowedRoles={['ADMIN']}><PrescriptionList /></PrivateRoute>} />
+          <Route path="/prescriptions/add" element={<PrivateRoute allowedRoles={['ADMIN']}><AddPrescription /></PrivateRoute>} />
+          <Route path="/scan-prescription" element={<PrivateRoute allowedRoles={['ADMIN']}><ScanPrescription /></PrivateRoute>} />
+          <Route path="/sales/new" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><SalesEntry /></PrivateRoute>} />
+          <Route path="/sales/history" element={<PrivateRoute allowedRoles={['ADMIN']}><SalesHistory /></PrivateRoute>} />
+          <Route path="/sales/receivables" element={<PrivateRoute allowedRoles={['ADMIN']}><ReceivablesList /></PrivateRoute>} />
+          <Route path="/prices" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><ViewPrices /></PrivateRoute>} />
+          <Route path="/vendors" element={<PrivateRoute allowedRoles={['ADMIN']}><VendorManagement /></PrivateRoute>} />
+          <Route path="/vendors/payables" element={<PrivateRoute allowedRoles={['ADMIN']}><VendorPayables /></PrivateRoute>} />
         </Routes>
       </Router>
     </AuthProvider>

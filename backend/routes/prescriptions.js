@@ -95,7 +95,7 @@ router.get('/', auth, async (req, res) => {
     let query = {};
     
     // If not admin, only show prescriptions uploaded by the user
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'ADMIN') {
       query.uploadedBy = req.user.id;
     }
     
@@ -118,7 +118,7 @@ router.get('/stats/count', auth, async (req, res) => {
     let query = {};
     
     // If not admin, only count prescriptions uploaded by the user
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'ADMIN') {
       query.uploadedBy = req.user.id;
     }
     
@@ -143,7 +143,7 @@ router.get('/:id', auth, async (req, res) => {
     }
     
     // If not admin and not uploader, deny access
-    if (req.user.role !== 'admin' && prescription.uploadedBy.toString() !== req.user.id) {
+    if (req.user.role !== 'ADMIN' && prescription.uploadedBy.toString() !== req.user.id) {
       return res.status(403).json({ msg: 'Access denied' });
     }
     
@@ -163,7 +163,7 @@ router.get('/:id', auth, async (req, res) => {
 router.put('/:id/status', auth, async (req, res) => {
   try {
     // Only admin can update status
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ msg: 'Access denied. Admin only.' });
     }
     
@@ -204,7 +204,7 @@ router.delete('/:id', auth, async (req, res) => {
     }
     
     // Check if user is admin or the uploader
-    if (req.user.role !== 'admin' && prescription.uploadedBy.toString() !== req.user.id) {
+    if (req.user.role !== 'ADMIN' && prescription.uploadedBy.toString() !== req.user.id) {
       return res.status(403).json({ msg: 'Access denied' });
     }
     

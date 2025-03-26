@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Medicine = require('../models/Medicine');
 const auth = require('../middleware/auth');
+const mongoose = require('mongoose');
 
 // Get all medicines with sorting, pagination, and search
 router.get('/', auth, async (req, res) => {
@@ -127,37 +128,83 @@ router.get('/:id', auth, async (req, res) => {
 // Add new medicine (admin only)
 router.post('/', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
-        // Validate required fields
-        const { name, composition, category, price, stock, expiryDate, manufacturer, batchNumber } = req.body;
+        const { 
+            name, 
+            composition, 
+            description,
+            category, 
+            price, 
+            currency,
+            priceUnit,
+            stock, 
+            expiryDate, 
+            manufacturer, 
+            batchNumber,
+            requiresPrescription,
+            storage,
+            vendor,
+            purchasePrice,
+            paymentStatus,
+            paidAmount
+        } = req.body;
         
-        if (!name || !composition || !category || !price || !stock || !expiryDate || !manufacturer || !batchNumber) {
+        // Validate required fields
+        if (!name || !composition || !category || !price || !stock || !expiryDate || 
+            !manufacturer || !batchNumber || !storage || !vendor || !purchasePrice || 
+            !paymentStatus || typeof paidAmount !== 'number') {
             return res.status(400).json({ message: 'Please provide all required fields' });
         }
 
-        // Create new medicine
+        // Validate vendor ID format
+        if (!mongoose.Types.ObjectId.isValid(vendor)) {
+            return res.status(400).json({ message: 'Invalid vendor ID format' });
+        }
+
+        // Calculate due amount based on payment status
+        let dueAmount = 0;
+        if (paymentStatus === 'DUE') {
+            dueAmount = purchasePrice;
+        } else if (paymentStatus === 'PARTIAL') {
+            dueAmount = purchasePrice - paidAmount;
+        }
+
+        // Create new medicine with explicit field assignment
         const medicine = new Medicine({
-            name,
-            composition,
-            description: req.body.description || '',
-            category,
+            name: name.trim(),
+            composition: composition,
+            description: description || '',
+            category: category.trim(),
             price: parseFloat(price),
-            priceUnit: req.body.priceUnit || 'piece',
+            currency: currency || 'NPR',
+            priceUnit: priceUnit || 'piece',
             stock: parseInt(stock),
             expiryDate: new Date(expiryDate),
-            manufacturer,
-            batchNumber,
-            requiresPrescription: req.body.requiresPrescription || false,
+            manufacturer: manufacturer.trim(),
+            batchNumber: batchNumber.trim(),
+            requiresPrescription: requiresPrescription || false,
+            storage: storage,
+            vendor: new mongoose.Types.ObjectId(vendor), // Convert to ObjectId
+            purchasePrice: parseFloat(purchasePrice),
+            paymentStatus: paymentStatus,
+            paidAmount: parseFloat(paidAmount),
+            dueAmount: parseFloat(dueAmount),
             isArchived: false
         });
 
-        await medicine.save();
-        res.status(201).json(medicine);
+        console.log('Creating medicine with data:', medicine.toObject()); // Add debug log
+
+        const savedMedicine = await medicine.save();
+        res.status(201).json(savedMedicine);
     } catch (error) {
-        console.error('Error adding medicine:', error.message);
+        console.error('Error adding medicine:', error);
+        if (error.name === 'ValidationError') {
+            const validationErrors = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({ message: 'Validation failed', errors: validationErrors });
+        }
         res.status(400).json({ message: error.message });
     }
 });
@@ -165,7 +212,7 @@ router.post('/', auth, async (req, res) => {
 // Update medicine (admin only)
 router.put('/:id', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -186,7 +233,7 @@ router.put('/:id', auth, async (req, res) => {
 // Delete medicine (admin only)
 router.delete('/:id', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -205,7 +252,7 @@ router.delete('/:id', auth, async (req, res) => {
 // @access  Private (Admin only)
 router.put('/:id/archive', auth, async (req, res) => {
     // Only admin can archive medicines
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'ADMIN') {
         return res.status(403).json({ msg: 'Access denied. Admin only.' });
     }
 

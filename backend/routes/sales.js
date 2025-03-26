@@ -82,7 +82,7 @@ router.get('/', auth, async (req, res) => {
     let query = {};
     
     // If not admin, only show sales created by the user
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'ADMIN') {
       query.createdBy = req.user.id;
     }
     
@@ -101,7 +101,7 @@ router.get('/', auth, async (req, res) => {
 // @access  Private (Admin only)
 router.get('/stats/total', auth, async (req, res) => {
   // Only admin can access total sales
-  if (req.user.role !== 'admin') {
+  if (req.user.role !== 'ADMIN') {
     return res.status(403).json({ msg: 'Access denied. Admin only.' });
   }
   
@@ -128,7 +128,7 @@ router.get('/stats/total', auth, async (req, res) => {
 // @access  Private (Admin only)
 router.get('/stats/daily', auth, async (req, res) => {
   // Only admin can access stats
-  if (req.user.role !== 'admin') {
+  if (req.user.role !== 'ADMIN') {
     return res.status(403).json({ msg: 'Access denied. Admin only.' });
   }
   
@@ -184,7 +184,7 @@ router.get('/customer/:name', auth, async (req, res) => {
     };
     
     // If not admin, only show sales created by the user
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'ADMIN') {
       query.createdBy = req.user.id;
     }
     
@@ -302,7 +302,7 @@ router.get('/:id', auth, async (req, res) => {
     }
     
     // If not admin and not creator, deny access
-    if (req.user.role !== 'admin' && sale.createdBy.toString() !== req.user.id) {
+    if (req.user.role !== 'ADMIN' && sale.createdBy.toString() !== req.user.id) {
       return res.status(403).json({ msg: 'Access denied' });
     }
     
@@ -321,7 +321,7 @@ router.get('/:id', auth, async (req, res) => {
 // @access  Private (Admin only)
 router.delete('/:id', auth, async (req, res) => {
   // Only admin can delete sales
-  if (req.user.role !== 'admin') {
+  if (req.user.role !== 'ADMIN') {
     return res.status(403).json({ msg: 'Access denied. Admin only.' });
   }
   

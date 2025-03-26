@@ -6,6 +6,10 @@ const vendorSchema = new mongoose.Schema({
     required: true,
     trim: true
   },
+  contactPerson: {
+    type: String,
+    trim: true
+  },
   phone: {
     type: String,
     required: true,

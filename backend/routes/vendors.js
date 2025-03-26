@@ -53,7 +53,7 @@ router.get('/:id/transactions', auth, async (req, res) => {
 // Add vendor transaction
 router.post('/:id/transactions', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -71,7 +71,7 @@ router.post('/:id/transactions', auth, async (req, res) => {
 // Update vendor transaction
 router.put('/transactions/:id', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -105,7 +105,7 @@ router.get('/:id', auth, async (req, res) => {
 // Create new vendor (admin only)
 router.post('/', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -120,7 +120,7 @@ router.post('/', auth, async (req, res) => {
 // Update vendor (admin only)
 router.put('/:id', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
@@ -141,7 +141,7 @@ router.put('/:id', auth, async (req, res) => {
 // Delete vendor (admin only)
 router.delete('/:id', auth, async (req, res) => {
     try {
-        if (req.user.role !== 'admin') {
+        if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 

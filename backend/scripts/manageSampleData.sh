@@ -1,34 +1,46 @@
 #!/bin/bash
 
-# Function to display usage
-show_usage() {
-    echo "Usage: $0 [insert|rollback|create-admin]"
-    echo "  insert      - Insert sample data into the database"
-    echo "  rollback    - Remove sample data from the database"
-    echo "  create-admin - Create default admin user"
-    exit 1
+# Function to display usage information
+usage() {
+    echo "Usage: $0 [command]"
+    echo "Commands:"
+    echo "  seed             - Insert sample data into the database"
+    echo "  rollback         - Remove sample data from the database"
+    echo "  create-admin     - Create admin user"
+    echo "  create-viewer    - Create viewer user"
+    echo "  delete-medicines - Delete all medicines"
+    echo "  drop-index      - Drop indexes"
 }
 
-# Check if command is provided
+# Check if a command is provided
 if [ $# -eq 0 ]; then
-    show_usage
+    usage
+    exit 1
 fi
 
-# Execute based on command
+# Execute command based on argument
 case "$1" in
-    "insert")
-        echo "Inserting sample data..."
+    "seed")
         node sampleData.js
         ;;
     "rollback")
-        echo "Rolling back sample data..."
         node rollbackSampleData.js
         ;;
     "create-admin")
-        echo "Creating admin user..."
         node createAdminUser.js
         ;;
+    "create-viewer")
+        node createViewerUser.js
+        ;;
+    "delete-medicines")
+        node deleteSampleMedicines.js
+        ;;
+    "drop-index")
+        node dropIndex.js
+        ;;
     *)
-        show_usage
+        echo "Invalid command: $1"
+        usage
+        exit 1
         ;;
 esac 

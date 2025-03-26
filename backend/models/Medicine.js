@@ -6,11 +6,11 @@ const medicineSchema = new mongoose.Schema({
         required: true,
         trim: true
     },
-    composition: {
+    composition: [{
         type: String,
         required: true,
         trim: true
-    },
+    }],
     description: {
         type: String,
         trim: true
@@ -28,12 +28,14 @@ const medicineSchema = new mongoose.Schema({
     currency: {
         type: String,
         required: true,
-        default: 'NPR'
+        default: 'NPR',
+        enum: ['NPR', 'INR']
     },
     priceUnit: {
         type: String,
         required: true,
-        trim: true
+        trim: true,
+        enum: ['piece', 'box', 'strip', 'bottle', 'pack']
     },
     stock: {
         type: Number,
@@ -65,12 +67,12 @@ const medicineSchema = new mongoose.Schema({
     storage: {
         type: String,
         required: true,
-        trim: true
+        enum: ['cold', 'extreme_cold', 'hot', 'extreme_hot']
     },
     vendor: {
-        type: String,
-        required: true,
-        trim: true
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'Vendor',
+        required: true
     },
     purchasePrice: {
         type: Number,
@@ -85,12 +87,14 @@ const medicineSchema = new mongoose.Schema({
     paidAmount: {
         type: Number,
         required: true,
-        min: 0
+        min: 0,
+        default: 0
     },
     dueAmount: {
         type: Number,
         required: true,
-        min: 0
+        min: 0,
+        default: 0
     },
     createdAt: {
         type: Date,
