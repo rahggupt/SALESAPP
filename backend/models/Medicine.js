@@ -44,7 +44,19 @@ const medicineSchema = new mongoose.Schema({
     },
     expiryDate: {
         type: Date,
-        required: true
+        required: true,
+        get: function(date) {
+            if (!date) return '';
+            return date.toISOString().slice(0, 7); // Return YYYY-MM format
+        },
+        set: function(date) {
+            if (!date) return null;
+            // If date is already in YYYY-MM format, append -01 for the day
+            if (date.match(/^\d{4}-\d{2}$/)) {
+                return new Date(date + '-01');
+            }
+            return new Date(date);
+        }
     },
     manufacturer: {
         type: String,
@@ -101,7 +113,9 @@ const medicineSchema = new mongoose.Schema({
         default: Date.now
     }
 }, {
-    timestamps: true
+    timestamps: true,
+    toJSON: { getters: true }, // Enable getters when converting to JSON
+    toObject: { getters: true } // Enable getters when converting to object
 });
 
 // Remove the unique index on composition array

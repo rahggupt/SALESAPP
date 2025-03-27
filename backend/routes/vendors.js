@@ -2,10 +2,10 @@ const express = require('express');
 const router = express.Router();
 const Vendor = require('../models/Vendor');
 const VendorTransaction = require('../models/VendorTransaction');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 
 // Get all vendors
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
     try {
         const vendors = await Vendor.find().sort({ name: 1 });
         res.json(vendors);
@@ -16,7 +16,7 @@ router.get('/', auth, async (req, res) => {
 });
 
 // Get vendor count for dashboard
-router.get('/stats/count', auth, async (req, res) => {
+router.get('/stats/count', authenticateToken, async (req, res) => {
     try {
         const count = await Vendor.countDocuments();
         res.json({ count });
@@ -27,7 +27,7 @@ router.get('/stats/count', auth, async (req, res) => {
 });
 
 // Get total payables
-router.get('/stats/payables', auth, async (req, res) => {
+router.get('/stats/payables', authenticateToken, async (req, res) => {
     try {
         const transactions = await VendorTransaction.find();
         const total = transactions.reduce((acc, curr) => acc + curr.dueAmount, 0);
@@ -39,7 +39,7 @@ router.get('/stats/payables', auth, async (req, res) => {
 });
 
 // Get vendor transactions
-router.get('/:id/transactions', auth, async (req, res) => {
+router.get('/:id/transactions', authenticateToken, async (req, res) => {
     try {
         const transactions = await VendorTransaction.find({ vendor: req.params.id })
             .populate('medicine')
@@ -51,7 +51,7 @@ router.get('/:id/transactions', auth, async (req, res) => {
 });
 
 // Add vendor transaction
-router.post('/:id/transactions', auth, async (req, res) => {
+router.post('/:id/transactions', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
@@ -69,7 +69,7 @@ router.post('/:id/transactions', auth, async (req, res) => {
 });
 
 // Update vendor transaction
-router.put('/transactions/:id', auth, async (req, res) => {
+router.put('/transactions/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
@@ -90,7 +90,7 @@ router.put('/transactions/:id', auth, async (req, res) => {
 });
 
 // Get vendor by ID
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const vendor = await Vendor.findById(req.params.id);
         if (!vendor) {
@@ -103,7 +103,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // Create new vendor (admin only)
-router.post('/', auth, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
@@ -118,7 +118,7 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Update vendor (admin only)
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
@@ -139,7 +139,7 @@ router.put('/:id', auth, async (req, res) => {
 });
 
 // Delete vendor (admin only)
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });

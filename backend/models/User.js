@@ -19,10 +19,14 @@ const userSchema = new mongoose.Schema({
     },
     email: {
         type: String,
-        required: true,
-        unique: true,
         trim: true,
-        lowercase: true
+        lowercase: true,
+        sparse: true // Allows null/undefined values to be unique
+    },
+    phoneNumber: {
+        type: String,
+        required: true,
+        trim: true
     },
     fullName: {
         type: String,
@@ -32,6 +36,10 @@ const userSchema = new mongoose.Schema({
     isActive: {
         type: Boolean,
         default: true
+    },
+    createdAt: {
+        type: Date,
+        default: Date.now
     }
 }, {
     timestamps: true
@@ -51,12 +59,7 @@ userSchema.pre('save', async function(next) {
 
 // Method to compare password
 userSchema.methods.comparePassword = async function(candidatePassword) {
-    try {
-        return await bcrypt.compare(candidatePassword, this.password);
-    } catch (error) {
-        console.error('Password comparison error:', error);
-        return false;
-    }
+    return bcrypt.compare(candidatePassword, this.password);
 };
 
 module.exports = mongoose.model('User', userSchema); 

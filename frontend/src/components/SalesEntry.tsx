@@ -22,6 +22,12 @@ interface SaleItem {
   discount: number;
 }
 
+interface MedicineResponse {
+  medicines: Medicine[];
+  totalPages: number;
+  categories: string[];
+}
+
 const SalesEntry: React.FC = () => {
   // Form state
   const [customerName, setCustomerName] = useState('');
@@ -37,7 +43,7 @@ const SalesEntry: React.FC = () => {
   
   // UI state
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -48,28 +54,26 @@ const SalesEntry: React.FC = () => {
   
   // Fetch medicines on component mount
   useEffect(() => {
+    const fetchMedicines = async () => {
+      try {
+        const response = await axios.get<MedicineResponse>('http://localhost:5000/api/medicines', {
+          headers: { Authorization: `Bearer ${token}` },
+          params: {
+            limit: 100, // Fetch more medicines for the sales entry
+            archived: false // Only fetch non-archived medicines
+          }
+        });
+        setMedicines(response.data.medicines);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching medicines:', err);
+        setError('Failed to fetch medicines. Please try again.');
+        setLoading(false);
+      }
+    };
+
     fetchMedicines();
   }, [token]);
-  
-  // Fetch all medicines
-  const fetchMedicines = async () => {
-    setLoading(true);
-    setError(null);
-    
-    try {
-      const response = await axios.get('http://localhost:5000/api/medicines', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      
-      // Only show medicines with stock > 0
-      setMedicines(response.data.filter((medicine: Medicine) => medicine.stock > 0));
-    } catch (err) {
-      setError('Failed to fetch medicines. Please try again.');
-      console.error('Error fetching medicines:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
   
   // Handle medicine selection
   const handleMedicineChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -205,15 +209,18 @@ const SalesEntry: React.FC = () => {
       setError('Customer name is required');
       return;
     }
+
+    if (paymentMethod === 'credit' && !customerPhone) {
+      setError('Phone number is required for credit sales');
+      return;
+    }
     
     setSubmitting(true);
     setError(null);
     
     try {
-      // Create form data for multipart submission if prescription image exists
       const formData = new FormData();
       
-      // Add sale data
       const saleData = {
         customerName,
         customerPhone,
@@ -221,17 +228,17 @@ const SalesEntry: React.FC = () => {
         paymentMethod,
         items: saleItems,
         notes,
-        total: calculateTotal()
+        total: calculateTotal(),
+        isPaid: paymentMethod !== 'credit',
+        dueAmount: paymentMethod === 'credit' ? calculateTotal() : 0
       };
       
       formData.append('saleData', JSON.stringify(saleData));
       
-      // Add prescription image if exists
       if (prescriptionImage) {
         formData.append('prescriptionImage', prescriptionImage);
       }
       
-      // Submit sale
       await axios.post('http://localhost:5000/api/sales', formData, {
         headers: { 
           'Content-Type': 'multipart/form-data',
@@ -254,7 +261,6 @@ const SalesEntry: React.FC = () => {
       setImagePreview(null);
       setNotes('');
       
-      // Clear success message after 5 seconds
       setTimeout(() => {
         setSuccessMessage(null);
       }, 5000);
@@ -274,7 +280,7 @@ const SalesEntry: React.FC = () => {
   );
   
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 to-gray-100">
+    <div className="min-h-screen bg-gray-50">
       {/* Banner */}
       <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
@@ -283,33 +289,34 @@ const SalesEntry: React.FC = () => {
               <h1 className="text-3xl font-bold">Shyama Pharmacy</h1>
               <p className="mt-1 text-indigo-100">Your health is our priority</p>
             </div>
-            <div className="flex space-x-4">
+            <div>
               <Link to="/dashboard" className="text-white hover:text-indigo-100 flex items-center">
                 <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
                 </svg>
                 Dashboard
               </Link>
-              <Link to="/medicines" className="text-white hover:text-indigo-100 flex items-center">
+              <Link to="/sales-history" className="text-white hover:text-indigo-100 flex items-center">
                 <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
-                Medicines
+                Sales History
               </Link>
             </div>
           </div>
         </div>
       </div>
 
-      <main className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+
         <div className="px-4 py-6 sm:px-0">
-          <div className="flex justify-between items-center mb-6">
+          <div className="mb-6">
             <h2 className="text-2xl font-bold text-gray-900">Record Sale</h2>
             <Link
               to="/sales"
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 flex items-center"
+              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 inline-block mt-2"
             >
-              <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg className="h-5 w-5 mr-2 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
               </svg>
               View Sales History
@@ -413,6 +420,7 @@ const SalesEntry: React.FC = () => {
                       <option value="card">Card</option>
                       <option value="upi">UPI</option>
                       <option value="insurance">Insurance</option>
+                      <option value="credit">Credit</option>
                     </select>
                   </div>
                 </div>
@@ -718,7 +726,7 @@ const SalesEntry: React.FC = () => {
             </form>
           </div>
         </div>
-      </main>
+      </div>
     </div>
   );
 };

@@ -310,7 +310,7 @@ const AddMedicine: React.FC = () => {
     }
   };
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) => {
     const { name, value, type } = e.target;
     
     // Handle numeric inputs
@@ -328,6 +328,18 @@ const AddMedicine: React.FC = () => {
       setFormData(prev => ({
         ...prev,
         [name]: (e.target as HTMLInputElement).checked
+      }));
+      return;
+    }
+
+    // Handle expiry date
+    if (name === 'expiryDate') {
+      // Format the date to MM/YYYY
+      const date = new Date(value + '-01');  // Add day to make it a valid date
+      const formattedDate = date.toISOString().slice(0, 7);  // Get YYYY-MM format
+      setFormData(prev => ({
+        ...prev,
+        [name]: formattedDate
       }));
       return;
     }
@@ -412,13 +424,24 @@ const AddMedicine: React.FC = () => {
 
   const handleAddComposition = () => {
     if (currentComposition.trim()) {
-      setFormData(prev => ({
-        ...prev,
-        composition: [...prev.composition, currentComposition.trim()]
-      }));
+      setFormData(prev => {
+        // Convert existing compositions to Set to remove duplicates
+        const compositionSet = new Set(prev.composition);
+        compositionSet.add(currentComposition.trim());
+        
+        return {
+          ...prev,
+          composition: Array.from(compositionSet)
+        };
+      });
       setCurrentComposition('');
       setCompositionSuggestions([]);
     }
+  };
+
+  // Add a helper function to check if composition exists
+  const isCompositionDuplicate = (comp: string): boolean => {
+    return formData.composition.includes(comp.trim());
   };
 
   const handleRemoveComposition = (index: number) => {
@@ -571,6 +594,10 @@ const AddMedicine: React.FC = () => {
                       onKeyPress={(e) => {
                         if (e.key === 'Enter') {
                           e.preventDefault();
+                          if (isCompositionDuplicate(currentComposition)) {
+                            setError('This composition already exists');
+                            return;
+                          }
                           handleAddComposition();
                         }
                       }}
@@ -579,7 +606,13 @@ const AddMedicine: React.FC = () => {
                     />
                     <button
                       type="button"
-                      onClick={handleAddComposition}
+                      onClick={() => {
+                        if (isCompositionDuplicate(currentComposition)) {
+                          setError('This composition already exists');
+                          return;
+                        }
+                        handleAddComposition();
+                      }}
                       className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-r-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                     >
                       Add
@@ -589,7 +622,9 @@ const AddMedicine: React.FC = () => {
                   {compositionSuggestions.length > 0 && (
                     <div className="absolute z-10 mt-1 w-full bg-white shadow-lg rounded-md border border-gray-300">
                       <ul className="max-h-60 overflow-auto py-1 text-base">
-                        {compositionSuggestions.map((comp, index) => (
+                        {compositionSuggestions
+                          .filter(comp => !isCompositionDuplicate(comp))
+                          .map((comp, index) => (
                           <li
                             key={index}
                             className="cursor-pointer select-none relative py-2 pl-3 pr-9 hover:bg-indigo-600 hover:text-white"
@@ -738,9 +773,9 @@ const AddMedicine: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Expiry Date</label>
+                  <label className="block text-sm font-medium text-gray-700">Expiry Date (MM/YYYY)</label>
                   <input
-                    type="date"
+                    type="month"
                     name="expiryDate"
                     value={formData.expiryDate}
                     onChange={handleChange}

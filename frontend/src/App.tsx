@@ -15,6 +15,19 @@ import VendorManagement from './components/VendorManagement';
 import VendorPayables from './components/VendorPayables';
 import SalesHistory from './components/SalesHistory';
 import ReceivablesList from './components/ReceivablesList';
+import ExpiryView from './components/ExpiryView';
+import CreditorsView from './components/CreditorsView';
+import Layout from './components/Layout';
+import PurchaseOrder from './components/PurchaseOrder';
+
+// Wrap component with Layout
+const withLayout = (Component: React.ComponentType): React.ReactNode => {
+  return (
+    <Layout>
+      <Component />
+    </Layout>
+  );
+};
 
 function App() {
   return (
@@ -22,19 +35,24 @@ function App() {
       <Router>
         <Routes>
           <Route path="/login" element={<Login />} />
-          <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-          <Route path="/medicines" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><MedicineList /></PrivateRoute>} />
-          <Route path="/medicines/add" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><AddMedicine /></PrivateRoute>} />
-          <Route path="/prescriptions" element={<PrivateRoute allowedRoles={['ADMIN']}><PrescriptionList /></PrivateRoute>} />
-          <Route path="/prescriptions/add" element={<PrivateRoute allowedRoles={['ADMIN']}><AddPrescription /></PrivateRoute>} />
-          <Route path="/scan-prescription" element={<PrivateRoute allowedRoles={['ADMIN']}><ScanPrescription /></PrivateRoute>} />
-          <Route path="/sales/new" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><SalesEntry /></PrivateRoute>} />
-          <Route path="/sales/history" element={<PrivateRoute allowedRoles={['ADMIN']}><SalesHistory /></PrivateRoute>} />
-          <Route path="/sales/receivables" element={<PrivateRoute allowedRoles={['ADMIN']}><ReceivablesList /></PrivateRoute>} />
-          <Route path="/prices" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}><ViewPrices /></PrivateRoute>} />
-          <Route path="/vendors" element={<PrivateRoute allowedRoles={['ADMIN']}><VendorManagement /></PrivateRoute>} />
-          <Route path="/vendors/payables" element={<PrivateRoute allowedRoles={['ADMIN']}><VendorPayables /></PrivateRoute>} />
+          <Route path="/" element={<PrivateRoute>{withLayout(Dashboard)}</PrivateRoute>} />
+          <Route path="/dashboard" element={<PrivateRoute>{withLayout(Dashboard)}</PrivateRoute>} />
+          <Route path="/medicines" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}>{withLayout(MedicineList)}</PrivateRoute>} />
+          <Route path="/medicines/add" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}>{withLayout(AddMedicine)}</PrivateRoute>} />
+          <Route path="/medicines/expiry" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}>{withLayout(ExpiryView)}</PrivateRoute>} />
+          <Route path="/prescriptions" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(PrescriptionList)}</PrivateRoute>} />
+          <Route path="/prescriptions/add" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(AddPrescription)}</PrivateRoute>} />
+          <Route path="/scan-prescription" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(ScanPrescription)}</PrivateRoute>} />
+          <Route path="/sales/new" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}>{withLayout(SalesEntry)}</PrivateRoute>} />
+          <Route path="/sales/history" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(SalesHistory)}</PrivateRoute>} />
+          <Route path="/sales/receivables" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(ReceivablesList)}</PrivateRoute>} />
+          <Route path="/sales/creditors" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(CreditorsView)}</PrivateRoute>} />
+          <Route path="/prices" element={<PrivateRoute allowedRoles={['ADMIN', 'VIEWER']}>{withLayout(ViewPrices)}</PrivateRoute>} />
+          <Route path="/vendors" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(VendorManagement)}</PrivateRoute>} />
+          <Route path="/vendors/payables" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(VendorPayables)}</PrivateRoute>} />
+          <Route path="/sales-history" element={<SalesHistory />} />
+          <Route path="/purchase-orders" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(PurchaseOrder)}</PrivateRoute>} />
+          <Route path="/vendor-management" element={<VendorManagement />} />
         </Routes>
       </Router>
     </AuthProvider>

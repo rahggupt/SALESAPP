@@ -1,11 +1,11 @@
 const express = require('express');
 const router = express.Router();
 const Medicine = require('../models/Medicine');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const mongoose = require('mongoose');
 
 // Get all medicines with sorting, pagination, and search
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     const {
       page = 1,
@@ -72,22 +72,45 @@ router.get('/', auth, async (req, res) => {
 });
 
 // @route   GET api/medicines/stats/count
-// @desc    Get total count of medicines
+// @desc    Get total count of medicines and additional stats
 // @access  Private
-router.get('/stats/count', auth, async (req, res) => {
-    try {
-        const count = await Medicine.countDocuments({ isArchived: false });
-        res.json({ count });
-    } catch (error) {
-        console.error('Error getting medicine count:', error.message);
-        res.status(500).json({ message: 'Server error' });
-    }
+router.get('/stats/count', authenticateToken, async (req, res) => {
+  try {
+    const count = await Medicine.countDocuments({ isArchived: false });
+    
+    // Get count of medicines with stock below threshold (e.g., 10)
+    const lowStockCount = await Medicine.countDocuments({ 
+      isArchived: false,
+      stock: { $lt: 10 }
+    });
+    
+    // Get count of medicines expiring within 30 days
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    
+    const expiringCount = await Medicine.countDocuments({
+      isArchived: false,
+      expiryDate: {
+        $gte: new Date(),
+        $lte: thirtyDaysFromNow
+      }
+    });
+    
+    res.json({
+      count,
+      lowStockCount,
+      expiringCount
+    });
+  } catch (error) {
+    console.error('Error getting medicine count:', error.message);
+    res.status(500).json({ message: 'Server error' });
+  }
 });
 
 // @route   GET api/medicines/categories
 // @desc    Get unique categories
 // @access  Private
-router.get('/categories', auth, async (req, res) => {
+router.get('/categories', authenticateToken, async (req, res) => {
     try {
         const categories = await Medicine.distinct('category', { isArchived: false });
         res.json(categories);
@@ -100,7 +123,7 @@ router.get('/categories', auth, async (req, res) => {
 // @route   GET api/medicines/compositions
 // @desc    Get unique compositions
 // @access  Private
-router.get('/compositions', auth, async (req, res) => {
+router.get('/compositions', authenticateToken, async (req, res) => {
     try {
         const compositions = await Medicine.distinct('composition', { isArchived: false });
         // Flatten the array of arrays and get unique values
@@ -112,8 +135,101 @@ router.get('/compositions', auth, async (req, res) => {
     }
 });
 
-// Get medicine by ID
-router.get('/:id', auth, async (req, res) => {
+// Get medicine statistics
+router.get('/stats', authenticateToken, async (req, res) => {
+  try {
+    const totalCount = await Medicine.countDocuments();
+    
+    // Get count of medicines with stock below threshold (e.g., 10)
+    const lowStockCount = await Medicine.countDocuments({ stock: { $lt: 10 } });
+    
+    // Get count of medicines expiring within 30 days
+    const thirtyDaysFromNow = new Date();
+    thirtyDaysFromNow.setDate(thirtyDaysFromNow.getDate() + 30);
+    
+    const expiringCount = await Medicine.countDocuments({
+      expiryDate: {
+        $gte: new Date(),
+        $lte: thirtyDaysFromNow
+      }
+    });
+    
+    res.json({
+      totalCount,
+      lowStockCount,
+      expiringCount
+    });
+  } catch (err) {
+    console.error('Error getting medicine stats:', err);
+    res.status(500).json({ message: 'Error getting medicine statistics' });
+  }
+});
+
+// Get medicines by expiry status
+router.get('/expiry', authenticateToken, async (req, res) => {
+  try {
+    const { filter = 'all', days = 30 } = req.query;
+    const today = new Date();
+    let query = { isArchived: false };
+
+    switch (filter) {
+      case 'expired':
+        query.expiryDate = { $lt: today };
+        break;
+      case 'expiring':
+        const daysFromNow = new Date();
+        daysFromNow.setDate(daysFromNow.getDate() + parseInt(days));
+        query.expiryDate = { 
+          $gte: today,
+          $lte: daysFromNow
+        };
+        break;
+      case 'all':
+      default:
+        // No additional date filter needed
+        break;
+    }
+
+    const medicines = await Medicine.find(query)
+      .sort({ expiryDate: 1 })
+      .populate('vendor', 'name')
+      .select('name description category manufacturer batchNumber expiryDate stock vendor purchasePrice');
+
+    // Group medicines by status
+    const result = {
+      expired: [],
+      expiring: [],
+      valid: []
+    };
+
+    const daysFromNow = new Date();
+    daysFromNow.setDate(daysFromNow.getDate() + parseInt(days));
+
+    medicines.forEach(medicine => {
+      const expiryDate = new Date(medicine.expiryDate);
+      if (expiryDate < today) {
+        result.expired.push(medicine);
+      } else if (expiryDate <= daysFromNow) {
+        result.expiring.push(medicine);
+      } else {
+        result.valid.push(medicine);
+      }
+    });
+
+    res.json({
+      medicines: result,
+      total: medicines.length,
+      filter,
+      days
+    });
+  } catch (err) {
+    console.error('Error fetching medicines by expiry:', err);
+    res.status(500).json({ message: 'Error fetching medicines', error: err.message });
+  }
+});
+
+// Get medicine by ID - This should come after all other specific routes
+router.get('/:id', authenticateToken, async (req, res) => {
     try {
         const medicine = await Medicine.findById(req.params.id);
         if (!medicine) {
@@ -126,7 +242,7 @@ router.get('/:id', auth, async (req, res) => {
 });
 
 // Add new medicine (admin only)
-router.post('/', auth, async (req, res) => {
+router.post('/', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
@@ -164,6 +280,11 @@ router.post('/', auth, async (req, res) => {
             return res.status(400).json({ message: 'Invalid vendor ID format' });
         }
 
+        // Validate expiry date format (YYYY-MM)
+        if (!expiryDate.match(/^\d{4}-\d{2}$/)) {
+            return res.status(400).json({ message: 'Invalid expiry date format. Use YYYY-MM format.' });
+        }
+
         // Calculate due amount based on payment status
         let dueAmount = 0;
         if (paymentStatus === 'DUE') {
@@ -182,12 +303,12 @@ router.post('/', auth, async (req, res) => {
             currency: currency || 'NPR',
             priceUnit: priceUnit || 'piece',
             stock: parseInt(stock),
-            expiryDate: new Date(expiryDate),
+            expiryDate: expiryDate, // The schema's setter will handle the date conversion
             manufacturer: manufacturer.trim(),
             batchNumber: batchNumber.trim(),
             requiresPrescription: requiresPrescription || false,
             storage: storage,
-            vendor: new mongoose.Types.ObjectId(vendor), // Convert to ObjectId
+            vendor: new mongoose.Types.ObjectId(vendor),
             purchasePrice: parseFloat(purchasePrice),
             paymentStatus: paymentStatus,
             paidAmount: parseFloat(paidAmount),
@@ -195,7 +316,7 @@ router.post('/', auth, async (req, res) => {
             isArchived: false
         });
 
-        console.log('Creating medicine with data:', medicine.toObject()); // Add debug log
+        console.log('Creating medicine with data:', medicine.toObject());
 
         const savedMedicine = await medicine.save();
         res.status(201).json(savedMedicine);
@@ -210,28 +331,42 @@ router.post('/', auth, async (req, res) => {
 });
 
 // Update medicine (admin only)
-router.put('/:id', auth, async (req, res) => {
+router.put('/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
         }
 
+        const { expiryDate } = req.body;
+        
+        // Validate expiry date format if it's being updated
+        if (expiryDate && !expiryDate.match(/^\d{4}-\d{2}$/)) {
+            return res.status(400).json({ message: 'Invalid expiry date format. Use YYYY-MM format.' });
+        }
+
         const medicine = await Medicine.findByIdAndUpdate(
             req.params.id,
             req.body,
-            { new: true }
+            { new: true, runValidators: true }
         );
+        
         if (!medicine) {
             return res.status(404).json({ message: 'Medicine not found' });
         }
+        
         res.json(medicine);
     } catch (error) {
-        res.status(400).json({ message: error.message });
+        console.error('Error updating medicine:', error);
+        if (error.name === 'ValidationError') {
+            const validationErrors = Object.values(error.errors).map(err => err.message);
+            return res.status(400).json({ message: 'Validation failed', errors: validationErrors });
+        }
+        res.status(500).json({ message: error.message });
     }
 });
 
 // Delete medicine (admin only)
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
     try {
         if (req.user.role !== 'ADMIN') {
             return res.status(403).json({ message: 'Access denied' });
@@ -247,10 +382,8 @@ router.delete('/:id', auth, async (req, res) => {
     }
 });
 
-// @route   PUT api/medicines/:id/archive
-// @desc    Archive a medicine
-// @access  Private (Admin only)
-router.put('/:id/archive', auth, async (req, res) => {
+// Archive medicine (admin only)
+router.put('/:id/archive', authenticateToken, async (req, res) => {
     // Only admin can archive medicines
     if (req.user.role !== 'ADMIN') {
         return res.status(403).json({ msg: 'Access denied. Admin only.' });

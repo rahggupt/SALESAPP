@@ -3,9 +3,10 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const Sale = require('../models/Sale');
 const Medicine = require('../models/Medicine');
+const mongoose = require('mongoose');
 
 // Set up multer storage for prescription images
 const storage = multer.diskStorage({
@@ -42,7 +43,7 @@ const upload = multer({
 // @route   POST api/sales
 // @desc    Create a new sale
 // @access  Private
-router.post('/', auth, upload.single('prescriptionImage'), async (req, res) => {
+router.post('/', authenticateToken, upload.single('prescriptionImage'), async (req, res) => {
   try {
     // Parse sale data
     const saleData = req.body.saleData ? JSON.parse(req.body.saleData) : req.body;
@@ -56,28 +57,74 @@ router.post('/', auth, upload.single('prescriptionImage'), async (req, res) => {
     // Add user to sale data
     saleData.createdBy = req.user.id;
     
-    // Create sale record
-    const sale = new Sale(saleData);
-    await sale.save();
-    
-    // Update medicine stock
-    for (const item of saleData.items) {
-      await Medicine.findByIdAndUpdate(item.medicineId, {
-        $inc: { stock: -item.quantity }
-      });
+    // Validate required fields
+    if (!saleData.customer || !saleData.items || !Array.isArray(saleData.items) || saleData.items.length === 0) {
+      return res.status(400).json({ message: 'Customer and at least one medicine item are required' });
     }
+
+    // Calculate totals
+    let totalAmount = 0;
+    for (const item of saleData.items) {
+      if (!item.medicineId || !item.quantity || !item.price) {
+        return res.status(400).json({ message: 'Each item must have medicineId, quantity, and price' });
+      }
+      item.subtotal = item.quantity * item.price;
+      totalAmount += item.subtotal;
+    }
+
+    saleData.totalAmount = totalAmount;
+    saleData.finalAmount = totalAmount - (saleData.discount || 0);
+
+    // Set default payment type if not provided
+    if (!saleData.paymentType) {
+      saleData.paymentType = 'CASH';
+    }
+
+    // Create and save sale record
+    const sale = new Sale(saleData);
     
-    res.status(201).json(sale);
+    // Update medicine stock in a transaction
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      // Save the sale
+      await sale.save({ session });
+
+      // Update medicine stock
+      for (const item of saleData.items) {
+        const medicine = await Medicine.findById(item.medicineId).session(session);
+        if (!medicine) {
+          throw new Error(`Medicine with ID ${item.medicineId} not found`);
+        }
+        if (medicine.stock < item.quantity) {
+          throw new Error(`Insufficient stock for medicine ${medicine.name}`);
+        }
+        medicine.stock -= item.quantity;
+        await medicine.save({ session });
+      }
+
+      await session.commitTransaction();
+      res.status(201).json(sale);
+    } catch (error) {
+      await session.abortTransaction();
+      throw error;
+    } finally {
+      session.endSession();
+    }
   } catch (err) {
     console.error('Error creating sale:', err.message);
-    res.status(500).send('Server error');
+    if (err.name === 'ValidationError') {
+      return res.status(400).json({ message: err.message });
+    }
+    res.status(500).json({ message: 'Error creating sale', error: err.message });
   }
 });
 
 // @route   GET api/sales
 // @desc    Get all sales
 // @access  Private (Admin only for all sales, users see only their sales)
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     let query = {};
     
@@ -87,7 +134,9 @@ router.get('/', auth, async (req, res) => {
     }
     
     const sales = await Sale.find(query)
-      .populate('createdBy', 'username');
+      .populate('createdBy', 'username')
+      .populate('items.medicineId')  // Also populate medicine details
+      .sort({ createdAt: -1 });  // Sort by most recent first
       
     res.json(sales);
   } catch (err) {
@@ -97,36 +146,42 @@ router.get('/', auth, async (req, res) => {
 });
 
 // @route   GET api/sales/stats/total
-// @desc    Get total sales amount
-// @access  Private (Admin only)
-router.get('/stats/total', auth, async (req, res) => {
-  // Only admin can access total sales
-  if (req.user.role !== 'ADMIN') {
-    return res.status(403).json({ msg: 'Access denied. Admin only.' });
-  }
-  
+// @desc    Get total sales amount and count
+// @access  Private (Admin sees all sales, Viewer sees their own)
+router.get('/stats/total', authenticateToken, async (req, res) => {
   try {
+    let query = {};
+    
+    // If not admin, only show sales created by the user
+    if (req.user.role !== 'ADMIN') {
+      query.createdBy = req.user.id;
+    }
+    
     const result = await Sale.aggregate([
+      { $match: query },
       {
         $group: {
           _id: null,
-          total: { $sum: '$total' }
+          totalRevenue: { $sum: '$total' },
+          totalCount: { $sum: 1 }
         }
       }
     ]);
     
-    const total = result.length > 0 ? result[0].total : 0;
-    res.json({ total });
+    res.json({
+      totalRevenue: result.length > 0 ? result[0].totalRevenue : 0,
+      totalCount: result.length > 0 ? result[0].totalCount : 0
+    });
   } catch (err) {
-    console.error('Error getting total sales:', err.message);
-    res.status(500).send('Server error');
+    console.error('Error getting sales statistics:', err.message);
+    res.status(500).json({ message: 'Error getting sales statistics' });
   }
 });
 
 // @route   GET api/sales/stats/daily
 // @desc    Get daily sales statistics
 // @access  Private (Admin only)
-router.get('/stats/daily', auth, async (req, res) => {
+router.get('/stats/daily', authenticateToken, async (req, res) => {
   // Only admin can access stats
   if (req.user.role !== 'ADMIN') {
     return res.status(403).json({ msg: 'Access denied. Admin only.' });
@@ -177,7 +232,7 @@ router.get('/stats/daily', auth, async (req, res) => {
 // @route   GET api/sales/customer/:name
 // @desc    Get sales by customer name (partial match)
 // @access  Private
-router.get('/customer/:name', auth, async (req, res) => {
+router.get('/customer/:name', authenticateToken, async (req, res) => {
   try {
     let query = { 
       customerName: { $regex: req.params.name, $options: 'i' } 
@@ -202,7 +257,7 @@ router.get('/customer/:name', auth, async (req, res) => {
 // @route   GET api/sales/history
 // @desc    Get sales history with filters
 // @access  Private
-router.get('/history', auth, async (req, res) => {
+router.get('/history', authenticateToken, async (req, res) => {
     try {
         const { startDate, endDate, paymentType, paymentStatus } = req.query;
         let query = {};
@@ -234,7 +289,7 @@ router.get('/history', auth, async (req, res) => {
 // @route   GET api/sales/credit
 // @desc    Get credit sales with filters
 // @access  Private
-router.get('/credit', auth, async (req, res) => {
+router.get('/credit', authenticateToken, async (req, res) => {
     try {
         const { startDate, endDate, paymentStatus } = req.query;
         let query = {
@@ -264,7 +319,7 @@ router.get('/credit', auth, async (req, res) => {
 // @route   GET api/sales/stats/receivables
 // @desc    Get total receivables
 // @access  Private
-router.get('/stats/receivables', auth, async (req, res) => {
+router.get('/stats/receivables', authenticateToken, async (req, res) => {
     try {
         const sales = await Sale.find({ paymentType: 'CREDIT' });
         const total = sales.reduce((acc, curr) => acc + curr.dueAmount, 0);
@@ -278,21 +333,36 @@ router.get('/stats/receivables', auth, async (req, res) => {
 // @route   GET api/sales/stats/total
 // @desc    Get total sales
 // @access  Private
-router.get('/stats/total', auth, async (req, res) => {
+router.get('/stats/total', authenticateToken, async (req, res) => {
     try {
-        const sales = await Sale.find();
-        const total = sales.reduce((acc, curr) => acc + curr.totalAmount, 0);
-        res.json({ total });
-    } catch (error) {
-        console.error('Error calculating total sales:', error);
-        res.status(500).json({ message: 'Error calculating total sales' });
+        const totalCount = await Sale.countDocuments();
+        
+        // Calculate total revenue
+        const salesAggregate = await Sale.aggregate([
+          {
+            $group: {
+              _id: null,
+              totalRevenue: { $sum: '$totalAmount' }
+            }
+          }
+        ]);
+        
+        const totalRevenue = salesAggregate.length > 0 ? salesAggregate[0].totalRevenue : 0;
+        
+        res.json({
+          totalCount,
+          totalRevenue
+        });
+    } catch (err) {
+        console.error('Error getting sales stats:', err);
+        res.status(500).json({ message: 'Error getting sales statistics' });
     }
 });
 
 // @route   GET api/sales/:id
 // @desc    Get sale by ID
 // @access  Private
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const sale = await Sale.findById(req.params.id)
       .populate('createdBy', 'username');
@@ -319,7 +389,7 @@ router.get('/:id', auth, async (req, res) => {
 // @route   DELETE api/sales/:id
 // @desc    Delete a sale
 // @access  Private (Admin only)
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   // Only admin can delete sales
   if (req.user.role !== 'ADMIN') {
     return res.status(403).json({ msg: 'Access denied. Admin only.' });
@@ -358,20 +428,8 @@ router.delete('/:id', auth, async (req, res) => {
   }
 });
 
-// Get all sales
-router.get('/', auth, async (req, res) => {
-    try {
-        const sales = await Sale.find()
-            .populate('medicines.medicine')
-            .sort({ date: -1 });
-        res.json(sales);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching sales' });
-    }
-});
-
 // Update sale payment
-router.put('/:id/payment', auth, async (req, res) => {
+router.put('/:id/payment', authenticateToken, async (req, res) => {
     try {
         const { amount } = req.body;
         const sale = await Sale.findById(req.params.id);
@@ -394,6 +452,51 @@ router.put('/:id/payment', auth, async (req, res) => {
     } catch (error) {
         res.status(400).json({ message: error.message });
     }
+});
+
+// @route   GET api/sales/creditors
+// @desc    Get list of creditors with their due amounts
+// @access  Private
+router.get('/creditors', authenticateToken, async (req, res) => {
+  try {
+    const creditors = await Sale.aggregate([
+      {
+        $match: {
+          paymentType: 'CREDIT',
+          dueAmount: { $gt: 0 }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            customer: '$customer',
+            phoneNumber: '$customerPhone'
+          },
+          totalDue: { $sum: '$dueAmount' },
+          lastPurchaseDate: { $max: '$createdAt' },
+          salesCount: { $sum: 1 }
+        }
+      },
+      {
+        $project: {
+          _id: 0,
+          customer: '$_id.customer',
+          phoneNumber: '$_id.phoneNumber',
+          totalDue: 1,
+          lastPurchaseDate: 1,
+          salesCount: 1
+        }
+      },
+      {
+        $sort: { totalDue: -1 }
+      }
+    ]);
+
+    res.json({ creditors });
+  } catch (err) {
+    console.error('Error fetching creditors:', err);
+    res.status(500).json({ message: 'Error fetching creditors' });
+  }
 });
 
 module.exports = router; 

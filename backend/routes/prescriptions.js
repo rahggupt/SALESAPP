@@ -3,7 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const path = require('path');
 const fs = require('fs');
-const auth = require('../middleware/auth');
+const { authenticateToken } = require('../middleware/auth');
 const Prescription = require('../models/Prescription');
 const AWS = require('aws-sdk');
 const { v4: uuidv4 } = require('uuid');
@@ -40,7 +40,7 @@ const upload = multer({
 // @route   POST api/prescriptions/upload
 // @desc    Upload a prescription image to S3
 // @access  Private
-router.post('/upload', auth, upload.single('prescriptionImage'), async (req, res) => {
+router.post('/upload', authenticateToken, upload.single('prescriptionImage'), async (req, res) => {
   try {
     if (!req.file) {
       return res.status(400).json({ msg: 'Please upload a prescription image' });
@@ -90,7 +90,7 @@ router.post('/upload', auth, upload.single('prescriptionImage'), async (req, res
 // @route   GET api/prescriptions
 // @desc    Get all prescriptions
 // @access  Private
-router.get('/', auth, async (req, res) => {
+router.get('/', authenticateToken, async (req, res) => {
   try {
     let query = {};
     
@@ -113,7 +113,7 @@ router.get('/', auth, async (req, res) => {
 // @route   GET api/prescriptions/stats/count
 // @desc    Get total count of prescriptions
 // @access  Private
-router.get('/stats/count', auth, async (req, res) => {
+router.get('/stats/count', authenticateToken, async (req, res) => {
   try {
     let query = {};
     
@@ -133,7 +133,7 @@ router.get('/stats/count', auth, async (req, res) => {
 // @route   GET api/prescriptions/:id
 // @desc    Get prescription by ID
 // @access  Private
-router.get('/:id', auth, async (req, res) => {
+router.get('/:id', authenticateToken, async (req, res) => {
   try {
     const prescription = await Prescription.findById(req.params.id)
       .populate('uploadedBy', 'username role');
@@ -160,7 +160,7 @@ router.get('/:id', auth, async (req, res) => {
 // @route   PUT api/prescriptions/:id/status
 // @desc    Update prescription status (admin only)
 // @access  Private/Admin
-router.put('/:id/status', auth, async (req, res) => {
+router.put('/:id/status', authenticateToken, async (req, res) => {
   try {
     // Only admin can update status
     if (req.user.role !== 'ADMIN') {
@@ -195,7 +195,7 @@ router.put('/:id/status', auth, async (req, res) => {
 // @route   DELETE api/prescriptions/:id
 // @desc    Delete a prescription
 // @access  Private
-router.delete('/:id', auth, async (req, res) => {
+router.delete('/:id', authenticateToken, async (req, res) => {
   try {
     const prescription = await Prescription.findById(req.params.id);
     
@@ -226,6 +226,20 @@ router.delete('/:id', auth, async (req, res) => {
       return res.status(404).json({ msg: 'Prescription not found' });
     }
     res.status(500).send('Server error');
+  }
+});
+
+// Get prescription statistics
+router.get('/stats', authenticateToken, async (req, res) => {
+  try {
+    const totalCount = await Prescription.countDocuments();
+    
+    res.json({
+      totalCount
+    });
+  } catch (err) {
+    console.error('Error getting prescription stats:', err);
+    res.status(500).json({ message: 'Error getting prescription statistics' });
   }
 });
 

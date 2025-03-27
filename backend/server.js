@@ -8,6 +8,8 @@ const medicineRoutes = require('./routes/medicines');
 const prescriptionRoutes = require('./routes/prescriptions');
 const salesRoutes = require('./routes/sales');
 const vendorsRouter = require('./routes/vendors');
+const purchaseOrdersRouter = require('./routes/purchaseOrders');
+const userRoutes = require('./routes/users');
 
 dotenv.config();
 
@@ -39,6 +41,14 @@ app.use('/api/medicines', medicineRoutes);
 app.use('/api/prescriptions', prescriptionRoutes);
 app.use('/api/sales', salesRoutes);
 app.use('/api/vendors', vendorsRouter);
+app.use('/api/purchase-orders', purchaseOrdersRouter);
+app.use('/api/users', userRoutes);
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ message: 'Something went wrong!' });
+});
 
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {

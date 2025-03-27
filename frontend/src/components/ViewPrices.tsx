@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { Link } from 'react-router-dom';
 
 interface Medicine {
   _id: string;
@@ -10,6 +11,12 @@ interface Medicine {
   price: number;
   manufacturer: string;
   requiresPrescription: boolean;
+}
+
+interface MedicineResponse {
+  medicines: Medicine[];
+  totalPages: number;
+  categories: string[];
 }
 
 const ViewPrices: React.FC = () => {
@@ -23,10 +30,10 @@ const ViewPrices: React.FC = () => {
   useEffect(() => {
     const fetchMedicines = async () => {
       try {
-        const response = await axios.get('http://localhost:5000/api/medicines', {
+        const response = await axios.get<MedicineResponse>('http://localhost:5000/api/medicines', {
           headers: { Authorization: `Bearer ${token}` }
         });
-        setMedicines(response.data);
+        setMedicines(response.data.medicines);
         setLoading(false);
       } catch (err) {
         setError('Failed to fetch medicines');
@@ -37,28 +44,48 @@ const ViewPrices: React.FC = () => {
     fetchMedicines();
   }, [token]);
 
-  const filteredMedicines = medicines.filter(medicine => {
+  const filteredMedicines = medicines?.filter(medicine => {
     const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
                         medicine.description.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = categoryFilter === '' || medicine.category === categoryFilter;
     return matchesSearch && matchesCategory;
-  });
+  }) || [];
 
-  const categories = Array.from(new Set(medicines.map(medicine => medicine.category)));
+  const categories = Array.from(new Set(medicines?.map(medicine => medicine.category) || []));
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mb-8 bg-white rounded-lg shadow-md overflow-hidden">
-          <div className="px-6 py-5 bg-gradient-to-r from-indigo-500 to-purple-600">
-            <h2 className="text-2xl font-bold text-white">Medicine Price List</h2>
-            <p className="text-indigo-100 mt-1">View and search current medicine prices</p>
+    <div className="min-h-screen bg-gray-50">
+      {/* Banner */}
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="mb-4 md:mb-0">
+              <h1 className="text-3xl font-bold">Shyama Pharmacy</h1>
+              <p className="mt-1 text-indigo-100">Your health is our priority</p>
+            </div>
+            <div>
+              <Link to="/dashboard" className="text-white hover:text-indigo-100 flex items-center">
+                <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                Dashboard
+              </Link>
+              <Link to="/medicines" className="text-white hover:text-indigo-100 flex items-center">
+                <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10" />
+                </svg>
+                Medicines
+              </Link>
+            </div>
           </div>
         </div>
+      </div>
+
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
         <div className="bg-white shadow rounded-lg overflow-hidden">
           <div className="p-6 border-b border-gray-200">
-            <div className="flex flex-col space-y-4 md:flex-row md:space-y-0 md:space-x-4">
+            <div className="space-y-4 md:space-y-0 md:grid md:grid-cols-2 md:gap-4">
               <div className="flex-1">
                 <label htmlFor="search" className="sr-only">Search Medicines</label>
                 <div className="relative">
