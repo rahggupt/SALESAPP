@@ -1,89 +1,60 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
+const bcrypt = require('bcryptjs');
 const { authenticateToken } = require('../middleware/auth');
-const crypto = require('crypto');
+const User = require('../models/User');
 
 // Get all users (admin only)
 router.get('/', authenticateToken, async (req, res) => {
   try {
-    // Check if user is admin
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
 
-    const users = await User.find({}, '-password');
+    const users = await User.find({}, '-password').sort({ createdAt: -1 });
     res.json(users);
-  } catch (error) {
-    console.error('Error fetching users:', error);
-    res.status(500).json({ message: 'Error fetching users' });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 
-// Create a new user (admin only)
+// Create new user (admin only)
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    // Check if user is admin
     if (req.user.role !== 'ADMIN') {
       return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
 
-    const { username, role, email, fullName, phoneNumber } = req.body;
+    const { username, fullName, email, phoneNumber, role } = req.body;
 
-    // Validate required fields
-    if (!username || !fullName || !phoneNumber) {
-      return res.status(400).json({ 
-        message: 'Missing required fields',
-        required: ['username', 'fullName', 'phoneNumber']
-      });
-    }
-
-    // Check if username or phone number already exists
-    const existingUser = await User.findOne({ 
-      $or: [
-        { username },
-        { phoneNumber },
-        ...(email ? [{ email }] : [])
-      ]
-    });
-    
+    // Check if username already exists
+    const existingUser = await User.findOne({ username });
     if (existingUser) {
-      const field = existingUser.username === username ? 'username' :
-                    existingUser.phoneNumber === phoneNumber ? 'phoneNumber' : 'email';
-      return res.status(400).json({ 
-        message: `${field} already exists`,
-        field
-      });
+      return res.status(400).json({ message: 'Username already exists' });
     }
 
     // Generate a random password
-    const password = crypto.randomBytes(8).toString('hex');
+    const password = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create new user
     const user = new User({
       username,
-      email,
       fullName,
+      email,
       phoneNumber,
-      password,
-      role: role || 'USER'
+      role,
+      password: hashedPassword
     });
 
     await user.save();
 
-    // Return user without password
-    const userResponse = user.toObject();
-    delete userResponse.password;
+    // Return the initial password
     res.status(201).json({
-      ...userResponse,
-      initialPassword: password // Send the initial password to be displayed to the admin
+      message: 'User created successfully',
+      initialPassword: password
     });
-  } catch (error) {
-    console.error('Error creating user:', error);
-    res.status(500).json({ 
-      message: 'Error creating user',
-      error: error.message 
-    });
+  } catch (err) {
+    res.status(400).json({ message: err.message });
   }
 });
 
@@ -142,22 +113,24 @@ router.post('/:id/reset-password', authenticateToken, async (req, res) => {
       return res.status(403).json({ message: 'Access denied. Admin only.' });
     }
 
-    const { id } = req.params;
-    const user = await User.findById(id);
-    
+    const user = await User.findById(req.params.id);
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    // Generate new password
-    const newPassword = crypto.randomBytes(8).toString('hex');
-    user.password = newPassword;
+    // Generate a new random password
+    const newPassword = Math.random().toString(36).slice(-8);
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+
+    user.password = hashedPassword;
     await user.save();
 
-    res.json({ message: 'Password reset successful', newPassword });
-  } catch (error) {
-    console.error('Error resetting password:', error);
-    res.status(500).json({ message: 'Error resetting password' });
+    res.json({
+      message: 'Password reset successful',
+      newPassword
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
   }
 });
 

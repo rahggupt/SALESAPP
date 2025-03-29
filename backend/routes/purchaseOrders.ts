@@ -1,15 +1,17 @@
 import express from 'express';
 import PurchaseOrder from '../models/PurchaseOrder';
 import { authenticateToken } from '../middleware/auth';
+import Medicine from '../models/Medicine';
 
 const router = express.Router();
 
 // Get all purchase orders
 router.get('/', authenticateToken, async (req: any, res) => {
   try {
-    const purchaseOrders = await PurchaseOrder.find({ createdBy: req.user.id })
+    const purchaseOrders = await PurchaseOrder.find()
       .populate('vendorId', 'name')
       .populate('items.medicineId', 'name unit')
+      .populate('assignee', 'username')
       .sort({ createdAt: -1 });
     res.json(purchaseOrders);
   } catch (error) {
@@ -21,19 +23,61 @@ router.get('/', authenticateToken, async (req: any, res) => {
 // Create a new purchase order
 router.post('/', authenticateToken, async (req: any, res) => {
   try {
-    const { vendorId, items } = req.body;
+    const { vendorId, items, assigneeId, paymentStatus, paidAmount } = req.body;
 
     // Validate required fields
     if (!vendorId || !items || items.length === 0) {
       return res.status(400).json({ message: 'Vendor and at least one item are required' });
     }
 
+    // Generate order number (PO-YYYYMMDD-XXXX)
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const lastOrder = await PurchaseOrder.findOne({
+      orderNumber: new RegExp(`^PO-${dateStr}-`)
+    }).sort({ orderNumber: -1 });
+
+    let sequence = 1;
+    if (lastOrder) {
+      const lastSequence = parseInt(lastOrder.orderNumber.split('-')[2]);
+      sequence = lastSequence + 1;
+    }
+
+    const orderNumber = `PO-${dateStr}-${sequence.toString().padStart(4, '0')}`;
+
+    // Get medicine prices and calculate total
+    const itemsWithPrices = await Promise.all(items.map(async (item) => {
+      const medicine = await Medicine.findById(item.medicineId);
+      if (!medicine) {
+        throw new Error(`Medicine not found: ${item.medicineId}`);
+      }
+      
+      // Calculate price per piece by dividing total price by units per package
+      const pricePerPiece = medicine.price / medicine.unitsPerPackage;
+      
+      return {
+        medicineId: item.medicineId,
+        quantity: item.quantity,
+        price: pricePerPiece
+      };
+    }));
+
+    // Calculate total amount by multiplying quantity with price per piece for each item
+    const totalAmount = itemsWithPrices.reduce((sum, item) => {
+      const itemTotal = item.quantity * item.price;
+      return sum + itemTotal;
+    }, 0);
+
     // Create new purchase order
     const purchaseOrder = new PurchaseOrder({
+      orderNumber,
       vendorId,
-      items,
-      createdBy: req.user.id,
-      status: 'pending'
+      items: itemsWithPrices,
+      assignee: assigneeId,
+      status: 'pending',
+      totalAmount,
+      paymentStatus: paymentStatus || 'DUE',
+      paidAmount: paidAmount || 0
     });
 
     await purchaseOrder.save();
@@ -41,12 +85,13 @@ router.post('/', authenticateToken, async (req: any, res) => {
     // Populate the response with vendor and medicine details
     const populatedOrder = await PurchaseOrder.findById(purchaseOrder._id)
       .populate('vendorId', 'name')
-      .populate('items.medicineId', 'name unit');
+      .populate('items.medicineId', 'name unit')
+      .populate('assignee', 'username');
 
     res.status(201).json(populatedOrder);
   } catch (error) {
     console.error('Error creating purchase order:', error);
-    res.status(500).json({ message: 'Error creating purchase order' });
+    res.status(500).json({ message: error.message || 'Error creating purchase order' });
   }
 });
 
@@ -56,16 +101,17 @@ router.patch('/:id/status', authenticateToken, async (req: any, res) => {
     const { status } = req.body;
     const { id } = req.params;
 
-    if (!['pending', 'completed', 'cancelled'].includes(status)) {
+    if (!['pending', 'completed', 'cancelled', 'archived'].includes(status)) {
       return res.status(400).json({ message: 'Invalid status' });
     }
 
     const purchaseOrder = await PurchaseOrder.findOneAndUpdate(
-      { _id: id, createdBy: req.user.id },
+      { _id: id },
       { status },
       { new: true }
     ).populate('vendorId', 'name')
-     .populate('items.medicineId', 'name unit');
+     .populate('items.medicineId', 'name unit')
+     .populate('assignee', 'username');
 
     if (!purchaseOrder) {
       return res.status(404).json({ message: 'Purchase order not found' });
@@ -78,6 +124,35 @@ router.patch('/:id/status', authenticateToken, async (req: any, res) => {
   }
 });
 
+// Update purchase order payment status
+router.patch('/:id/payment', authenticateToken, async (req: any, res) => {
+  try {
+    const { paymentStatus, paidAmount } = req.body;
+    const { id } = req.params;
+
+    if (!['PAID', 'PARTIAL', 'DUE'].includes(paymentStatus)) {
+      return res.status(400).json({ message: 'Invalid payment status' });
+    }
+
+    const purchaseOrder = await PurchaseOrder.findOneAndUpdate(
+      { _id: id },
+      { paymentStatus, paidAmount },
+      { new: true }
+    ).populate('vendorId', 'name')
+     .populate('items.medicineId', 'name unit')
+     .populate('assignee', 'username');
+
+    if (!purchaseOrder) {
+      return res.status(404).json({ message: 'Purchase order not found' });
+    }
+
+    res.json(purchaseOrder);
+  } catch (error) {
+    console.error('Error updating purchase order payment:', error);
+    res.status(500).json({ message: 'Error updating purchase order payment' });
+  }
+});
+
 // Delete a purchase order
 router.delete('/:id', authenticateToken, async (req: any, res) => {
   try {
@@ -85,7 +160,6 @@ router.delete('/:id', authenticateToken, async (req: any, res) => {
 
     const purchaseOrder = await PurchaseOrder.findOneAndDelete({
       _id: id,
-      createdBy: req.user.id,
       status: 'pending' // Only allow deletion of pending orders
     });
 

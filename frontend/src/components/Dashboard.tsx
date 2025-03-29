@@ -127,7 +127,7 @@ const Dashboard: React.FC = () => {
 
   const loadUserLayout = () => {
     // Load user's saved layout from localStorage or use default
-    const savedLayout = localStorage.getItem(`dashboard_layout_${user?.id}`);
+    const savedLayout = localStorage.getItem(`dashboard_layout_${user?._id}`);
     if (savedLayout) {
       const parsedLayout = JSON.parse(savedLayout);
       const sectionsWithComponents = parsedLayout.map((section: DashboardSection) => ({
@@ -180,7 +180,7 @@ const Dashboard: React.FC = () => {
         }));
 
         // Save to localStorage
-        localStorage.setItem(`dashboard_layout_${user?.id}`, JSON.stringify(updatedItems));
+        localStorage.setItem(`dashboard_layout_${user?._id}`, JSON.stringify(updatedItems));
 
         return updatedItems;
       });

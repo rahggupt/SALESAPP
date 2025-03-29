@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 
@@ -29,6 +29,7 @@ interface MedicineResponse {
 }
 
 const SalesEntry: React.FC = () => {
+  const navigate = useNavigate();
   // Form state
   const [customerName, setCustomerName] = useState('');
   const [customerPhone, setCustomerPhone] = useState('');
@@ -261,9 +262,10 @@ const SalesEntry: React.FC = () => {
       setImagePreview(null);
       setNotes('');
       
+      // Navigate to sales history after a short delay
       setTimeout(() => {
-        setSuccessMessage(null);
-      }, 5000);
+        navigate('/sales/history');
+      }, 2000);
     } catch (err) {
       setError('Failed to record sale. Please try again.');
       console.error('Error recording sale:', err);
@@ -296,8 +298,11 @@ const SalesEntry: React.FC = () => {
                 </svg>
                 Dashboard
               </Link>
-              <Link to="/sales-history" className="text-white hover:text-indigo-100 flex items-center">
-                <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <Link
+                to="/sales/history"
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200 inline-block mt-2"
+              >
+                <svg className="h-5 w-5 mr-2 inline" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
                 </svg>
                 Sales History

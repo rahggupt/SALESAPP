@@ -55,7 +55,27 @@ router.post('/', authenticateToken, upload.single('prescriptionImage'), async (r
     }
     
     // Add user to sale data
-    saleData.createdBy = req.user.id;
+    saleData.createdBy = req.user.userId;
+    
+    // Transform customer data
+    if (saleData.customerName) {
+      saleData.customer = saleData.customerName;
+      delete saleData.customerName;
+    }
+    
+    // Transform payment method to payment type
+    if (saleData.paymentMethod) {
+      saleData.paymentType = saleData.paymentMethod.toUpperCase();
+      delete saleData.paymentMethod;
+    }
+    
+    // Set payment status based on isPaid
+    if (saleData.isPaid !== undefined) {
+      saleData.paymentStatus = saleData.isPaid ? 'PAID' : 'DUE';
+      saleData.paidAmount = saleData.isPaid ? saleData.total : 0;
+      saleData.dueAmount = saleData.isPaid ? 0 : saleData.total;
+      delete saleData.isPaid;
+    }
     
     // Validate required fields
     if (!saleData.customer || !saleData.items || !Array.isArray(saleData.items) || saleData.items.length === 0) {
@@ -80,38 +100,29 @@ router.post('/', authenticateToken, upload.single('prescriptionImage'), async (r
       saleData.paymentType = 'CASH';
     }
 
+    // First check if all medicines have sufficient stock
+    for (const item of saleData.items) {
+      const medicine = await Medicine.findById(item.medicineId);
+      if (!medicine) {
+        return res.status(400).json({ message: `Medicine with ID ${item.medicineId} not found` });
+      }
+      if (medicine.stock < item.quantity) {
+        return res.status(400).json({ message: `Insufficient stock for medicine ${medicine.name}` });
+      }
+    }
+
     // Create and save sale record
     const sale = new Sale(saleData);
-    
-    // Update medicine stock in a transaction
-    const session = await mongoose.startSession();
-    session.startTransaction();
+    await sale.save();
 
-    try {
-      // Save the sale
-      await sale.save({ session });
-
-      // Update medicine stock
-      for (const item of saleData.items) {
-        const medicine = await Medicine.findById(item.medicineId).session(session);
-        if (!medicine) {
-          throw new Error(`Medicine with ID ${item.medicineId} not found`);
-        }
-        if (medicine.stock < item.quantity) {
-          throw new Error(`Insufficient stock for medicine ${medicine.name}`);
-        }
-        medicine.stock -= item.quantity;
-        await medicine.save({ session });
-      }
-
-      await session.commitTransaction();
-      res.status(201).json(sale);
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    } finally {
-      session.endSession();
+    // Update medicine stock
+    for (const item of saleData.items) {
+      await Medicine.findByIdAndUpdate(item.medicineId, {
+        $inc: { stock: -item.quantity }
+      });
     }
+
+    res.status(201).json(sale);
   } catch (err) {
     console.error('Error creating sale:', err.message);
     if (err.name === 'ValidationError') {
@@ -258,32 +269,42 @@ router.get('/customer/:name', authenticateToken, async (req, res) => {
 // @desc    Get sales history with filters
 // @access  Private
 router.get('/history', authenticateToken, async (req, res) => {
-    try {
-        const { startDate, endDate, paymentType, paymentStatus } = req.query;
-        let query = {};
-
-        if (startDate && endDate) {
-            query.date = {
-                $gte: new Date(startDate),
-                $lte: new Date(endDate)
-            };
-        }
-
-        if (paymentType) {
-            query.paymentType = paymentType.toUpperCase();
-        }
-
-        if (paymentStatus) {
-            query.paymentStatus = paymentStatus.toUpperCase();
-        }
-
-        const sales = await Sale.find(query)
-            .populate('medicines.medicine')
-            .sort({ date: -1 });
-        res.json(sales);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching sales history' });
+  try {
+    let query = {};
+    
+    // If not admin, only show sales created by the user
+    if (req.user.role !== 'ADMIN') {
+      query.createdBy = req.user.userId;
     }
+
+    // Add date range filter
+    if (req.query.startDate && req.query.endDate) {
+      query.date = {
+        $gte: new Date(req.query.startDate),
+        $lte: new Date(new Date(req.query.endDate).setHours(23, 59, 59, 999))
+      };
+    }
+
+    // Add payment type filter
+    if (req.query.paymentType) {
+      query.paymentType = req.query.paymentType;
+    }
+
+    // Add payment status filter
+    if (req.query.paymentStatus) {
+      query.paymentStatus = req.query.paymentStatus;
+    }
+    
+    const sales = await Sale.find(query)
+      .populate('createdBy', 'username')
+      .populate('items.medicineId')
+      .sort({ date: -1 });
+      
+    res.json(sales);
+  } catch (err) {
+    console.error('Error fetching sales history:', err.message);
+    res.status(500).json({ message: 'Error fetching sales history' });
+  }
 });
 
 // @route   GET api/sales/credit

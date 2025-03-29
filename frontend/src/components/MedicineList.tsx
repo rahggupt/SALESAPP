@@ -11,6 +11,7 @@ interface Medicine {
   category: string;
   price: number;
   priceUnit: string;
+  unitsPerPackage: number;
   stock: number;
   expiryDate: string;
   manufacturer: string;
@@ -18,6 +19,14 @@ interface Medicine {
   requiresPrescription: boolean;
   isArchived: boolean;
   storage: 'cold' | 'extreme_cold' | 'hot' | 'extreme_hot';
+  purchasePrice: number;
+  paymentStatus: 'PAID' | 'PARTIAL' | 'DUE';
+  paidAmount: number;
+  dueAmount: number;
+  vendor: {
+    _id: string;
+    name: string;
+  };
 }
 
 interface MedicineResponse {
@@ -28,9 +37,26 @@ interface MedicineResponse {
   categories: string[];
 }
 
+interface VendorPaymentSummary {
+  vendorId: string;
+  vendorName: string;
+  totalPayable: number;
+  orders: {
+    orderNumber: string;
+    totalAmount: number;
+    paidAmount: number;
+    paymentStatus: string;
+  }[];
+}
+
 // Add conversion function
 const convertToINR = (nprPrice: number): number => {
   return nprPrice / 1.6; // 1 INR = 1.6 NPR
+};
+
+// Add function to calculate per piece price
+const calculatePerPiecePrice = (price: number, unitsPerPackage: number): number => {
+  return price / unitsPerPackage;
 };
 
 const MedicineList: React.FC = () => {
@@ -52,6 +78,13 @@ const MedicineList: React.FC = () => {
   const [categories, setCategories] = useState<string[]>([]);
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [debouncedCompositionSearch, setDebouncedCompositionSearch] = useState('');
+  const [vendorPayments, setVendorPayments] = useState<VendorPaymentSummary[]>([]);
+  const [paymentModal, setPaymentModal] = useState<{ isOpen: boolean; medicine: Medicine | null }>({
+    isOpen: false,
+    medicine: null
+  });
+  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'DUE'>('DUE');
 
   // Update the debounce effect to use a longer delay
   useEffect(() => {
@@ -207,6 +240,71 @@ const MedicineList: React.FC = () => {
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
       setError('Failed to archive medicine');
+    }
+  };
+
+  const fetchVendorPayments = async () => {
+    try {
+      const response = await axios.get('http://localhost:5000/api/purchase-orders', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      // Calculate vendor payment summaries
+      const vendorSummaries = response.data.reduce((acc: { [key: string]: VendorPaymentSummary }, order: any) => {
+        if (order.paymentStatus !== 'PAID') {
+          const vendorId = order.vendorId._id;
+          if (!acc[vendorId]) {
+            acc[vendorId] = {
+              vendorId,
+              vendorName: order.vendorId.name,
+              totalPayable: 0,
+              orders: []
+            };
+          }
+          
+          acc[vendorId].totalPayable += order.totalAmount - order.paidAmount;
+          acc[vendorId].orders.push({
+            orderNumber: order.orderNumber,
+            totalAmount: order.totalAmount,
+            paidAmount: order.paidAmount,
+            paymentStatus: order.paymentStatus
+          });
+        }
+        return acc;
+      }, {});
+      
+      setVendorPayments(Object.values(vendorSummaries));
+    } catch (err) {
+      console.error('Error fetching vendor payments:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchVendorPayments();
+  }, [token]);
+
+  const handlePaymentSubmit = async () => {
+    if (!paymentModal.medicine) return;
+
+    try {
+      await axios.put(
+        `http://localhost:5000/api/medicines/${paymentModal.medicine._id}/payment`,
+        {
+          paidAmount: paymentAmount,
+          paymentStatus
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      // Refresh medicines list
+      fetchMedicines();
+      setPaymentModal({ isOpen: false, medicine: null });
+      setPaymentAmount(0);
+      setPaymentStatus('DUE');
+      setSuccessMessage('Payment status updated successfully');
+      setTimeout(() => setSuccessMessage(''), 3000);
+    } catch (err) {
+      setError('Failed to update payment status');
     }
   };
 
@@ -456,6 +554,9 @@ const MedicineList: React.FC = () => {
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Batch Number
                     </th>
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Payment Status
+                    </th>
                     {isAdmin && !showArchived && (
                       <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
                         Actions
@@ -501,7 +602,10 @@ const MedicineList: React.FC = () => {
                             ≈ INR {convertToINR(medicine.price).toFixed(2)}
                           </div>
                           <div className="text-xs text-gray-400">
-                            per {medicine.priceUnit}
+                            per {medicine.priceUnit} ({medicine.unitsPerPackage} units)
+                          </div>
+                          <div className="text-xs text-green-600 mt-1">
+                            NPR {calculatePerPiecePrice(medicine.price, medicine.unitsPerPackage).toFixed(2)} per piece
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -515,7 +619,7 @@ const MedicineList: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-500">
-                            {new Date(medicine.expiryDate).toLocaleDateString()}
+                            {medicine.expiryDate}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -536,6 +640,31 @@ const MedicineList: React.FC = () => {
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
                             {medicine.batchNumber}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="flex flex-col">
+                            <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                              medicine.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800' :
+                              medicine.paymentStatus === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
+                              'bg-red-100 text-red-800'
+                            }`}>
+                              {medicine.paymentStatus}
+                            </span>
+                            <div className="text-xs text-gray-500 mt-1">
+                              Paid: NPR {medicine.paidAmount.toFixed(2)}
+                            </div>
+                            <div className="text-xs text-gray-500">
+                              Due: NPR {medicine.dueAmount.toFixed(2)}
+                            </div>
+                            {isAdmin && medicine.paymentStatus !== 'PAID' && (
+                              <button
+                                onClick={() => setPaymentModal({ isOpen: true, medicine })}
+                                className="mt-1 text-xs text-indigo-600 hover:text-indigo-900"
+                              >
+                                Update Payment
+                              </button>
+                            )}
                           </div>
                         </td>
                         {isAdmin && !showArchived && (
@@ -704,9 +833,9 @@ const MedicineList: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Expiry Date</label>
                   <input
-                    type="date"
+                    type="month"
                     name="expiryDate"
-                    value={editMedicine.expiryDate.substring(0, 10)}
+                    value={editMedicine.expiryDate}
                     onChange={handleEditChange}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                     required
@@ -769,6 +898,102 @@ const MedicineList: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {vendorPayments.length > 0 && (
+        <div className="mt-8 bg-white shadow-md rounded-lg overflow-hidden">
+          <div className="px-6 py-4 border-b border-gray-200">
+            <h3 className="text-lg font-medium text-gray-900">Vendor Payment Summary</h3>
+          </div>
+          <div className="p-6">
+            <div className="space-y-6">
+              {vendorPayments.map((vendor) => (
+                <div key={vendor.vendorId} className="border-b border-gray-200 pb-6 last:border-b-0">
+                  <div className="flex justify-between items-center mb-4">
+                    <div>
+                      <h4 className="text-lg font-medium text-gray-900">{vendor.vendorName}</h4>
+                      <p className="text-sm text-gray-500">Total Payable: ₹{vendor.totalPayable.toFixed(2)}</p>
+                    </div>
+                    <Link
+                      to={`/purchase-orders?vendor=${vendor.vendorId}`}
+                      className="text-indigo-600 hover:text-indigo-900"
+                    >
+                      View Orders
+                    </Link>
+                  </div>
+                  <div className="space-y-2">
+                    {vendor.orders.map((order) => (
+                      <div key={order.orderNumber} className="flex justify-between items-center text-sm">
+                        <span className="text-gray-600">
+                          Order #{order.orderNumber} ({order.paymentStatus})
+                        </span>
+                        <span className="font-medium text-gray-900">
+                          ₹{(order.totalAmount - order.paidAmount).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment Modal */}
+      {paymentModal.isOpen && paymentModal.medicine && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-md w-full p-6">
+            <h3 className="text-lg font-medium text-gray-900 mb-4">Update Payment Status</h3>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Medicine</label>
+                <p className="mt-1 text-sm text-gray-900">{paymentModal.medicine.name}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Total Amount</label>
+                <p className="mt-1 text-sm text-gray-900">NPR {paymentModal.medicine.purchasePrice.toFixed(2)}</p>
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Amount Paid</label>
+                <input
+                  type="number"
+                  value={paymentAmount}
+                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  min="0"
+                  max={paymentModal.medicine.purchasePrice}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Payment Status</label>
+                <select
+                  value={paymentStatus}
+                  onChange={(e) => setPaymentStatus(e.target.value as 'PAID' | 'PARTIAL' | 'DUE')}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                >
+                  <option value="PAID">Paid</option>
+                  <option value="PARTIAL">Partial</option>
+                  <option value="DUE">Due</option>
+                </select>
+              </div>
+            </div>
+            <div className="mt-6 flex justify-end space-x-3">
+              <button
+                onClick={() => setPaymentModal({ isOpen: false, medicine: null })}
+                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-200"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handlePaymentSubmit}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-indigo-700"
+              >
+                Update Payment
+              </button>
+            </div>
           </div>
         </div>
       )}

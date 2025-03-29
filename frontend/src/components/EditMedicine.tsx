@@ -16,11 +16,9 @@ interface FormData {
   manufacturer: string;
   batchNumber: string;
   expiryDate: string;
-  purchasePrice: number;
-  paymentStatus: string;
-  paidAmount: number;
   requiresPrescription: boolean;
   vendor?: string;
+  unitsPerPackage: number;
 }
 
 const EditMedicine: React.FC = () => {
@@ -40,10 +38,8 @@ const EditMedicine: React.FC = () => {
     manufacturer: '',
     batchNumber: '',
     expiryDate: '',
-    purchasePrice: 0,
-    paymentStatus: 'DUE',
-    paidAmount: 0,
-    requiresPrescription: false
+    requiresPrescription: false,
+    unitsPerPackage: 1
   });
   const [originalData, setOriginalData] = useState({});
   const [error, setError] = useState('');
@@ -347,45 +343,37 @@ const EditMedicine: React.FC = () => {
                   </div>
                 </div>
 
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Purchase Price</label>
-                  <input
-                    type="number"
-                    name="purchasePrice"
-                    value={formData.purchasePrice}
-                    onChange={handleInputChange}
-                    min="0"
-                    step="0.01"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Payment Status</label>
-                  <select
-                    name="paymentStatus"
-                    value={formData.paymentStatus}
-                    onChange={handleInputChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                  >
-                    <option value="PAID">Paid</option>
-                    <option value="PARTIAL">Partial</option>
-                    <option value="DUE">Due</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Paid Amount</label>
-                  <input
-                    type="number"
-                    name="paidAmount"
-                    value={formData.paidAmount}
-                    onChange={handleInputChange}
-                    min="0"
-                    step="0.01"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                  />
+                {/* Add price calculation display */}
+                <div className="mt-2 bg-gray-50 p-4 rounded-md">
+                  <h4 className="text-sm font-medium text-gray-700 mb-2">Price Calculation</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Price per piece:</span>
+                      <span className="font-medium text-green-600">
+                        {formData.currency} {(formData.price / formData.unitsPerPackage).toFixed(2)}
+                      </span>
+                    </div>
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Total Price ({formData.priceUnit}):</span>
+                      <span className="font-medium">
+                        {formData.currency} {formData.price.toFixed(2)}
+                      </span>
+                    </div>
+                    {formData.currency === 'INR' && (
+                      <div className="flex justify-between text-sm">
+                        <span className="text-gray-600">Price per piece (NPR):</span>
+                        <span className="font-medium text-green-600">
+                          NPR {((formData.price * 1.6) / formData.unitsPerPackage).toFixed(2)}
+                        </span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Total Amount (Based on Stock):</span>
+                      <span className="font-medium text-green-600">
+                        {formData.currency} {(formData.price * formData.stock).toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
@@ -440,6 +428,23 @@ const EditMedicine: React.FC = () => {
                   <label className="ml-2 block text-sm text-gray-900">
                     Requires Prescription
                   </label>
+                </div>
+
+                <div>
+                  <label htmlFor="editUnitsPerPackage" className="block text-sm font-medium text-gray-700">
+                    Units per Package
+                  </label>
+                  <input
+                    type="number"
+                    id="editUnitsPerPackage"
+                    name="unitsPerPackage"
+                    min="1"
+                    value={formData.unitsPerPackage}
+                    onChange={handleInputChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Number of pieces in one {formData.priceUnit}</p>
                 </div>
               </div>
             </div>

@@ -4,7 +4,7 @@ import axios from 'axios';
 interface AuthContextType {
   token: string | null;
   user: {
-    id: string;
+    _id: string;
     username: string;
     role: string;
   } | null;

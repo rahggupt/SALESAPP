@@ -4,7 +4,7 @@ import axios from 'axios';
 import { Link } from 'react-router-dom';
 
 interface Medicine {
-  medicine: {
+  medicineId: {
     name: string;
   };
   quantity: number;
@@ -14,15 +14,12 @@ interface Medicine {
 
 interface Sale {
   _id: string;
-  customer?: {
-    name: string;
-    phone: string;
-  };
-  medicines: Medicine[];
+  customer: string;
+  items: Medicine[];
   totalAmount: number;
   discount: number;
   finalAmount: number;
-  paymentType: 'CASH' | 'CREDIT';
+  paymentType: 'CASH' | 'CREDIT' | 'CARD' | 'UPI' | 'INSURANCE';
   paymentStatus: 'PAID' | 'DUE' | 'PARTIAL';
   paidAmount: number;
   dueAmount: number;
@@ -44,7 +41,7 @@ const SalesHistory: React.FC = () => {
     startDate: new Date(new Date().setDate(new Date().getDate() - 30)).toISOString().split('T')[0],
     endDate: new Date().toISOString().split('T')[0]
   });
-  const [paymentTypeFilter, setPaymentTypeFilter] = useState<'ALL' | 'CASH' | 'CREDIT'>('ALL');
+  const [paymentTypeFilter, setPaymentTypeFilter] = useState<'ALL' | 'CASH' | 'CREDIT' | 'CARD' | 'UPI' | 'INSURANCE'>('ALL');
   const [paymentStatusFilter, setPaymentStatusFilter] = useState<'ALL' | 'PAID' | 'DUE' | 'PARTIAL'>('ALL');
   const [stats, setStats] = useState({
     totalSales: 0,
@@ -178,7 +175,7 @@ const SalesHistory: React.FC = () => {
                 </svg>
                 Dashboard
               </Link>
-              <Link to="/sales-entry" className="text-white hover:text-indigo-100 flex items-center">
+              <Link to="/sales/new" className="text-white hover:text-indigo-100 flex items-center">
                 <svg className="h-5 w-5 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
                 </svg>
@@ -242,12 +239,15 @@ const SalesHistory: React.FC = () => {
               <select
                 id="paymentType"
                 value={paymentTypeFilter}
-                onChange={(e) => setPaymentTypeFilter(e.target.value as 'ALL' | 'CASH' | 'CREDIT')}
+                onChange={(e) => setPaymentTypeFilter(e.target.value as 'ALL' | 'CASH' | 'CREDIT' | 'CARD' | 'UPI' | 'INSURANCE')}
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
               >
                 <option value="ALL">All Types</option>
                 <option value="CASH">Cash</option>
                 <option value="CREDIT">Credit</option>
+                <option value="CARD">Card</option>
+                <option value="UPI">UPI</option>
+                <option value="INSURANCE">Insurance</option>
               </select>
             </div>
             <div>
@@ -384,20 +384,13 @@ const SalesHistory: React.FC = () => {
                       #{sale._id.slice(-6).toUpperCase()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {sale.customer ? (
-                        <div>
-                          <div>{sale.customer.name}</div>
-                          <div className="text-gray-500">{sale.customer.phone}</div>
-                        </div>
-                      ) : (
-                        <span className="text-gray-500">Walk-in Customer</span>
-                      )}
+                      {sale.customer || <span className="text-gray-500">Walk-in Customer</span>}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       <div className="flex flex-col space-y-1">
-                        {sale.medicines.map((item, index) => (
+                        {sale.items.map((item, index) => (
                           <div key={index} className="text-sm">
-                            {item.quantity} x {item.medicine.name}
+                            {item.quantity} x {item.medicineId.name}
                           </div>
                         ))}
                       </div>
@@ -415,7 +408,11 @@ const SalesHistory: React.FC = () => {
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                       <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        sale.paymentType === 'CASH' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'
+                        sale.paymentType === 'CASH' ? 'bg-green-100 text-green-800' :
+                        sale.paymentType === 'CREDIT' ? 'bg-blue-100 text-blue-800' :
+                        sale.paymentType === 'CARD' ? 'bg-yellow-100 text-yellow-800' :
+                        sale.paymentType === 'UPI' ? 'bg-purple-100 text-purple-800' :
+                        'bg-indigo-100 text-indigo-800'
                       }`}>
                         {sale.paymentType}
                       </span>

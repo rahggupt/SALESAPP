@@ -19,6 +19,7 @@ import ExpiryView from './components/ExpiryView';
 import CreditorsView from './components/CreditorsView';
 import Layout from './components/Layout';
 import PurchaseOrder from './components/PurchaseOrder';
+import UserManagement from './components/UserManagement';
 
 // Wrap component with Layout
 const withLayout = (Component: React.ComponentType): React.ReactNode => {
@@ -53,6 +54,7 @@ function App() {
           <Route path="/sales-history" element={<SalesHistory />} />
           <Route path="/purchase-orders" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(PurchaseOrder)}</PrivateRoute>} />
           <Route path="/vendor-management" element={<VendorManagement />} />
+          <Route path="/users" element={<PrivateRoute allowedRoles={['ADMIN']}>{withLayout(UserManagement)}</PrivateRoute>} />
         </Routes>
       </Router>
     </AuthProvider>

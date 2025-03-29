@@ -409,4 +409,72 @@ router.put('/:id/archive', authenticateToken, async (req, res) => {
     }
 });
 
+// Update medicine payment status
+router.put('/:id/payment', authenticateToken, async (req, res) => {
+    try {
+        if (req.user.role !== 'ADMIN') {
+            return res.status(403).json({ message: 'Access denied' });
+        }
+
+        const { paidAmount, paymentStatus } = req.body;
+        const medicine = await Medicine.findById(req.params.id);
+
+        if (!medicine) {
+            return res.status(404).json({ message: 'Medicine not found' });
+        }
+
+        // Update payment details
+        medicine.paidAmount = paidAmount;
+        medicine.paymentStatus = paymentStatus;
+        medicine.dueAmount = medicine.purchasePrice - paidAmount;
+
+        await medicine.save();
+
+        res.json({
+            message: 'Payment status updated successfully',
+            medicine
+        });
+    } catch (error) {
+        console.error('Error updating payment status:', error);
+        res.status(500).json({ message: 'Error updating payment status' });
+    }
+});
+
+// Get medicines by payment status
+router.get('/payment/status', authenticateToken, async (req, res) => {
+    try {
+        const { status } = req.query;
+        const query = { isArchived: false };
+
+        if (status) {
+            query.paymentStatus = status;
+        }
+
+        const medicines = await Medicine.find(query)
+            .populate('vendor', 'name')
+            .sort({ createdAt: -1 });
+
+        // Calculate total amounts
+        const totals = {
+            totalPurchasePrice: 0,
+            totalPaidAmount: 0,
+            totalDueAmount: 0
+        };
+
+        medicines.forEach(medicine => {
+            totals.totalPurchasePrice += medicine.purchasePrice;
+            totals.totalPaidAmount += medicine.paidAmount;
+            totals.totalDueAmount += medicine.dueAmount;
+        });
+
+        res.json({
+            medicines,
+            totals
+        });
+    } catch (error) {
+        console.error('Error fetching medicines by payment status:', error);
+        res.status(500).json({ message: 'Error fetching medicines' });
+    }
+});
+
 module.exports = router; 

@@ -37,6 +37,12 @@ const medicineSchema = new mongoose.Schema({
         trim: true,
         enum: ['piece', 'box', 'strip', 'bottle', 'pack']
     },
+    unitsPerPackage: {
+        type: Number,
+        required: true,
+        min: 1,
+        default: 1
+    },
     stock: {
         type: Number,
         required: true,

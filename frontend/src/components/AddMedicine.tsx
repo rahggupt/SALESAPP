@@ -26,6 +26,7 @@ interface MedicineFormData {
   price: number;
   currency: 'INR' | 'NPR';
   priceUnit: string;
+  unitsPerPackage: number;
   stock: number;
   expiryDate: string;
   manufacturer: string;
@@ -34,7 +35,7 @@ interface MedicineFormData {
   storage: 'cold' | 'extreme_cold' | 'hot' | 'extreme_hot';
   vendor: string;
   purchasePrice: number;
-  paymentStatus: 'PAID' | 'DUE' | 'PARTIAL';
+  paymentStatus: 'PAID' | 'PARTIAL' | 'DUE';
   paidAmount: number;
 }
 
@@ -47,6 +48,7 @@ const AddMedicine: React.FC = () => {
     price: 0,
     currency: 'NPR',
     priceUnit: 'piece',
+    unitsPerPackage: 1,
     stock: 0,
     expiryDate: '',
     manufacturer: '',
@@ -141,15 +143,7 @@ const AddMedicine: React.FC = () => {
     setSuccess('');
 
     try {
-      // Debug log for required fields
-      console.log('Required fields check:', {
-        paymentStatus: formData.paymentStatus,
-        purchasePrice: formData.purchasePrice,
-        vendor: formData.vendor,
-        storage: formData.storage
-      });
-
-      // Validate all required fields
+      // Validate required fields
       const requiredFields = {
         name: 'Medicine name',
         category: 'Category',
@@ -158,13 +152,12 @@ const AddMedicine: React.FC = () => {
         manufacturer: 'Manufacturer',
         batchNumber: 'Batch number',
         expiryDate: 'Expiry date',
-        purchasePrice: 'Purchase price',
-        paymentStatus: 'Payment status'
+        purchasePrice: 'Purchase price'
       };
 
       for (const [field, label] of Object.entries(requiredFields)) {
         const value = formData[field as keyof MedicineFormData];
-        if (!value || (typeof value === 'string' && !value.trim())) {
+        if (!value || (typeof value === 'number' && value <= 0)) {
           setError(`${label} is required`);
           setLoading(false);
           return;
@@ -183,47 +176,14 @@ const AddMedicine: React.FC = () => {
         return;
       }
 
-      if (formData.purchasePrice <= 0) {
-        setError('Purchase price must be greater than 0');
-        setLoading(false);
-        return;
-      }
-
       if (formData.stock < 0) {
         setError('Stock cannot be negative');
         setLoading(false);
         return;
       }
 
-      // Validate paid amount based on payment status
-      if (formData.paymentStatus === 'PAID' && formData.paidAmount !== formData.purchasePrice) {
-        setError('Paid amount must equal purchase price for PAID status');
-        setLoading(false);
-        return;
-      }
-
-      if (formData.paymentStatus === 'DUE' && formData.paidAmount !== 0) {
-        setError('Paid amount must be 0 for DUE status');
-        setLoading(false);
-        return;
-      }
-
-      if (formData.paymentStatus === 'PARTIAL' && (formData.paidAmount >= formData.purchasePrice || formData.paidAmount <= 0)) {
-        setError('Paid amount must be greater than 0 and less than purchase price for PARTIAL status');
-        setLoading(false);
-        return;
-      }
-
       const priceInNPR = convertToNPR(formData.price, formData.currency);
       
-      // Calculate due amount based on payment status
-      let dueAmount = 0;
-      if (formData.paymentStatus === 'DUE') {
-        dueAmount = formData.purchasePrice;
-      } else if (formData.paymentStatus === 'PARTIAL') {
-        dueAmount = formData.purchasePrice - formData.paidAmount;
-      }
-
       const medicineData = {
         name: formData.name.trim(),
         composition: formData.composition,
@@ -232,6 +192,7 @@ const AddMedicine: React.FC = () => {
         price: priceInNPR,
         currency: formData.currency,
         priceUnit: formData.priceUnit,
+        unitsPerPackage: Number(formData.unitsPerPackage),
         stock: Number(formData.stock),
         expiryDate: formData.expiryDate,
         manufacturer: formData.manufacturer.trim(),
@@ -239,44 +200,17 @@ const AddMedicine: React.FC = () => {
         requiresPrescription: formData.requiresPrescription,
         storage: formData.storage,
         vendor: formData.vendor,
-        purchasePrice: Number(formData.purchasePrice),
+        purchasePrice: formData.purchasePrice,
         paymentStatus: formData.paymentStatus,
-        paidAmount: Number(formData.paidAmount),
-        dueAmount: Number(dueAmount)
+        paidAmount: formData.paidAmount
       };
 
-      // Debug logs
-      console.log('Final medicine data:', {
-        ...medicineData,
-        _debug: {
-          paymentStatusType: typeof medicineData.paymentStatus,
-          purchasePriceType: typeof medicineData.purchasePrice,
-          vendorType: typeof medicineData.vendor,
-          storageType: typeof medicineData.storage
-        }
-      });
-
       // Create medicine
-      const medicineResponse = await axios.post('http://localhost:5000/api/medicines', medicineData, {
+      await axios.post('http://localhost:5000/api/medicines', medicineData, {
         headers: { 
           Authorization: `Bearer ${token}`,
           'Content-Type': 'application/json'
         }
-      });
-
-      // Create vendor transaction
-      const transactionData = {
-        medicine: medicineResponse.data._id,
-        transactionType: 'PURCHASE',
-        amount: Number(formData.purchasePrice),
-        paymentStatus: formData.paymentStatus,
-        paidAmount: Number(formData.paidAmount),
-        dueAmount: Number(dueAmount),
-        notes: `Purchase of medicine: ${formData.name}`
-      };
-
-      await axios.post(`http://localhost:5000/api/vendors/${formData.vendor}/transactions`, transactionData, {
-        headers: { Authorization: `Bearer ${token}` }
       });
 
       setSuccess('Medicine added successfully!');
@@ -288,6 +222,7 @@ const AddMedicine: React.FC = () => {
         price: 0,
         currency: 'NPR',
         priceUnit: 'piece',
+        unitsPerPackage: 1,
         stock: 0,
         expiryDate: '',
         manufacturer: '',
@@ -303,7 +238,6 @@ const AddMedicine: React.FC = () => {
     } catch (err: any) {
       console.error('Error adding medicine:', err);
       const errorMessage = err.response?.data?.message || 'Failed to add medicine. Please try again.';
-      console.error('Error details:', err.response?.data); // Add this for debugging
       setError(errorMessage);
     } finally {
       setLoading(false);
@@ -341,63 +275,6 @@ const AddMedicine: React.FC = () => {
         ...prev,
         [name]: formattedDate
       }));
-      return;
-    }
-
-    // Handle payment status change
-    if (name === 'paymentStatus') {
-      const paymentStatus = value as 'PAID' | 'DUE' | 'PARTIAL';
-      setFormData(prev => {
-        const newState = {
-          ...prev,
-          paymentStatus,
-          paidAmount: paymentStatus === 'PAID' ? prev.purchasePrice : paymentStatus === 'DUE' ? 0 : prev.paidAmount
-        };
-        return newState;
-      });
-      return;
-    }
-
-    // Handle paid amount change
-    if (name === 'paidAmount') {
-      const numValue = value === '' ? 0 : parseFloat(value);
-      const paidAmount = isNaN(numValue) ? 0 : numValue;
-      
-      // Validate paid amount based on payment status
-      if (formData.paymentStatus === 'PAID' && paidAmount !== formData.purchasePrice) {
-        setError('Paid amount must equal purchase price for PAID status');
-        return;
-      }
-      if (formData.paymentStatus === 'DUE' && paidAmount !== 0) {
-        setError('Paid amount must be 0 for DUE status');
-        return;
-      }
-      if (formData.paymentStatus === 'PARTIAL' && (paidAmount >= formData.purchasePrice || paidAmount <= 0)) {
-        setError('Paid amount must be greater than 0 and less than purchase price for PARTIAL status');
-        return;
-      }
-
-      setFormData(prev => ({
-        ...prev,
-        paidAmount
-      }));
-      setError('');
-      return;
-    }
-
-    // Handle purchase price change
-    if (name === 'purchasePrice') {
-      const numValue = value === '' ? 0 : parseFloat(value);
-      const purchasePrice = isNaN(numValue) ? 0 : numValue;
-      
-      setFormData(prev => {
-        const newState = {
-          ...prev,
-          purchasePrice,
-          paidAmount: prev.paymentStatus === 'PAID' ? purchasePrice : prev.paymentStatus === 'DUE' ? 0 : prev.paidAmount
-        };
-        return newState;
-      });
       return;
     }
 
@@ -743,12 +620,15 @@ const AddMedicine: React.FC = () => {
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Unit</label>
+                  <label htmlFor="priceUnit" className="block text-sm font-medium text-gray-700">
+                    Price Unit
+                  </label>
                   <select
+                    id="priceUnit"
                     name="priceUnit"
                     value={formData.priceUnit}
                     onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
                     required
                   >
                     <option value="piece">Piece</option>
@@ -759,6 +639,52 @@ const AddMedicine: React.FC = () => {
                   </select>
                 </div>
 
+                <div>
+                  <label htmlFor="unitsPerPackage" className="block text-sm font-medium text-gray-700">
+                    Units per Package
+                  </label>
+                  <input
+                    type="number"
+                    id="unitsPerPackage"
+                    name="unitsPerPackage"
+                    min="1"
+                    value={formData.unitsPerPackage}
+                    onChange={handleChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Number of pieces in one {formData.priceUnit}</p>
+                </div>
+              </div>
+
+              {/* Add price calculation display */}
+              <div className="mt-2 bg-gray-50 p-4 rounded-md">
+                <h4 className="text-sm font-medium text-gray-700 mb-2">Price Calculation</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Price per piece:</span>
+                    <span className="font-medium text-green-600">
+                      {formData.currency} {(formData.price / formData.unitsPerPackage).toFixed(2)}
+                    </span>
+                  </div>
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-600">Total Price ({formData.priceUnit}):</span>
+                    <span className="font-medium">
+                      {formData.currency} {formData.price.toFixed(2)}
+                    </span>
+                  </div>
+                  {formData.currency === 'INR' && (
+                    <div className="flex justify-between text-sm">
+                      <span className="text-gray-600">Price per piece (NPR):</span>
+                      <span className="font-medium text-green-600">
+                        NPR {((formData.price * 1.6) / formData.unitsPerPackage).toFixed(2)}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Stock Quantity</label>
                   <input
@@ -844,51 +770,6 @@ const AddMedicine: React.FC = () => {
 
               <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Purchase Price</label>
-                  <input
-                    type="number"
-                    name="purchasePrice"
-                    value={formData.purchasePrice}
-                    onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Payment Status</label>
-                  <select
-                    name="paymentStatus"
-                    value={formData.paymentStatus}
-                    onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  >
-                    <option value="PAID">PAID</option>
-                    <option value="DUE">DUE</option>
-                    <option value="PARTIAL">PARTIAL</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Paid Amount</label>
-                  <input
-                    type="number"
-                    name="paidAmount"
-                    value={formData.paidAmount}
-                    onChange={handleChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    required
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
-                <div>
                   <label htmlFor="storage" className="block text-sm font-medium text-gray-700">
                     Storage Requirements
                   </label>
@@ -922,6 +803,61 @@ const AddMedicine: React.FC = () => {
                   </label>
                 </div>
                 <p className="mt-1 text-xs text-gray-500">Check this if the medicine can only be sold with a valid prescription.</p>
+              </div>
+
+              {/* Add payment section */}
+              <div className="bg-gray-50 p-4 rounded-md">
+                <h3 className="text-lg font-medium text-gray-900 mb-4">Payment Details</h3>
+                <div className="grid grid-cols-1 gap-6 sm:grid-cols-2">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Purchase Price (NPR)</label>
+                    <input
+                      type="number"
+                      name="purchasePrice"
+                      value={formData.purchasePrice}
+                      onChange={handleChange}
+                      min="0"
+                      step="0.01"
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700">Payment Status</label>
+                    <select
+                      name="paymentStatus"
+                      value={formData.paymentStatus}
+                      onChange={handleChange}
+                      className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                      required
+                    >
+                      <option value="PAID">Paid</option>
+                      <option value="PARTIAL">Partial</option>
+                      <option value="DUE">Due</option>
+                    </select>
+                  </div>
+
+                  {formData.paymentStatus !== 'DUE' && (
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">Amount Paid (NPR)</label>
+                      <input
+                        type="number"
+                        name="paidAmount"
+                        value={formData.paidAmount}
+                        onChange={handleChange}
+                        min="0"
+                        max={formData.purchasePrice}
+                        step="0.01"
+                        className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        required
+                      />
+                      <p className="mt-1 text-xs text-gray-500">
+                        Due Amount: NPR {(formData.purchasePrice - formData.paidAmount).toFixed(2)}
+                      </p>
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="flex justify-between pt-4 border-t border-gray-200">
