@@ -2,6 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import mongoose from 'mongoose';
 import dotenv from 'dotenv';
+import path from 'path';
 import authRoutes from './routes/auth';
 import userRoutes from './routes/users';
 import medicineRoutes from './routes/medicines';
@@ -9,8 +10,11 @@ import salesRoutes from './routes/sales';
 import purchaseOrderRoutes from './routes/purchaseOrders';
 import vendorRoutes from './routes/vendors';
 import healthRoutes from './routes/health';
+import prescriptionRoutes from './routes/prescriptions';
 
-dotenv.config();
+// Load environment variables based on NODE_ENV
+const envFile = process.env.NODE_ENV === 'development' ? '.env.development' : '.env';
+dotenv.config({ path: path.resolve(__dirname, '..', envFile) });
 
 const app = express();
 
@@ -54,6 +58,7 @@ app.use('/api/sales', salesRoutes);
 app.use('/api/purchase-orders', purchaseOrderRoutes);
 app.use('/api/vendors', vendorRoutes);
 app.use('/api/health', healthRoutes);
+app.use('/api/prescriptions', prescriptionRoutes);
 console.debug(`[${new Date().toISOString()}] Routes registered successfully`);
 
 // Error handling middleware with debug logs
@@ -65,6 +70,7 @@ app.use((err: Error, _req: express.Request, res: express.Response, _next: expres
 
 // Connect to MongoDB with debug logs
 console.debug(`[${new Date().toISOString()}] Attempting to connect to MongoDB...`);
+console.debug(`[${new Date().toISOString()}] MongoDB URI: ${process.env.MONGODB_URI ? process.env.MONGODB_URI : 'not set'}`);
 mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sales-app')
   .then(() => {
     console.debug(`[${new Date().toISOString()}] Successfully connected to MongoDB`);
@@ -79,7 +85,7 @@ mongoose.connect(process.env.MONGODB_URI || 'mongodb://localhost:27017/sales-app
 console.debug(`[${new Date().toISOString()}] Environment variables:`, {
   NODE_ENV: process.env.NODE_ENV,
   PORT: process.env.PORT,
-  MONGODB_URI: process.env.MONGODB_URI ? '***' : undefined
+  MONGODB_URI: process.env.MONGODB_URI ? process.env.MONGODB_URI : undefined
 });
 
 export default app; 

@@ -10,7 +10,11 @@
     "prod": "NODE_ENV=production node dist/server.js",
     "seed": "ts-node src/seed.ts",
     "seed:medicines": "ts-node src/scripts/seedMedicines.ts",
-    "delete:medicines": "ts-node src/scripts/deleteSampleMedicines.ts"
+    "delete:medicines": "ts-node src/scripts/deleteSampleMedicines.ts",
+    "query:db": "NODE_ENV=development ts-node src/scripts/queryDb.ts",
+    "seed:admin": "NODE_ENV=development ts-node src/scripts/seedAdmin.ts",
+    "update:password": "NODE_ENV=development ts-node src/scripts/updateUserPassword.ts",
+    "check:db": "NODE_ENV=development ts-node src/scripts/checkDb.ts"
   },
   "dependencies": {
     "@types/react-beautiful-dnd": "^13.1.8",

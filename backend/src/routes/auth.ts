@@ -5,6 +5,24 @@ import User from '../models/User';
 
 const router = express.Router();
 
+// Middleware to verify JWT token
+const authenticateToken = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+  const authHeader = req.headers['authorization'];
+  const token = authHeader && authHeader.split(' ')[1];
+
+  if (!token) {
+    return res.status(401).json({ message: 'Authentication token required' });
+  }
+
+  jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key', (err: any, user: any) => {
+    if (err) {
+      return res.status(403).json({ message: 'Invalid token' });
+    }
+    req.user = user;
+    next();
+  });
+};
+
 router.post('/login', async (req, res) => {
   try {
     console.debug(`[${new Date().toISOString()}] Login attempt for email: ${req.body.email}`);
@@ -40,6 +58,25 @@ router.post('/login', async (req, res) => {
     });
   } catch (error) {
     console.debug(`[${new Date().toISOString()}] Login error:`, error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get user profile
+router.get('/profile', authenticateToken, async (req, res) => {
+  try {
+    console.debug(`[${new Date().toISOString()}] Fetching profile for user: ${req.user.userId}`);
+    const user = await User.findById(req.user.userId).select('-password');
+    
+    if (!user) {
+      console.debug(`[${new Date().toISOString()}] Profile not found for user: ${req.user.userId}`);
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    console.debug(`[${new Date().toISOString()}] Profile fetched successfully for user: ${user.email}`);
+    return res.json(user);
+  } catch (error) {
+    console.debug(`[${new Date().toISOString()}] Profile fetch error:`, error);
     return res.status(500).json({ message: 'Server error' });
   }
 });

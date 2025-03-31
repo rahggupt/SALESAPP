@@ -17,6 +17,7 @@ export const API_ENDPOINTS = {
   MEDICINE_PAYMENT_HISTORY: (medicineId: string) => `${API_URL}/api/medicines/${medicineId}/payment-history`,
   MEDICINE_PAYMENT: (medicineId: string) => `${API_URL}/api/medicines/${medicineId}/payment`,
   MEDICINE_ARCHIVE: (id: string) => `${API_URL}/api/medicines/${id}/archive`,
+  MEDICINE_UNARCHIVE: (id: string) => `${API_URL}/api/medicines/${id}/unarchive`,
 
   // Sales endpoints
   SALES: `${API_URL}/api/sales`,

@@ -5,7 +5,7 @@ require('dotenv').config();
 const seedAdmin = async () => {
     try {
         // Connect to MongoDB
-        await mongoose.connect(process.env.MONGODB_URI);
+        await mongoose.connect('mongodb+srv://rgnitw:rohyt5740@salesapp.nslxbyu.mongodb.net/?retryWrites=true&w=majority&appName=SalesApp');
         console.log('Connected to MongoDB');
 
         // Check if admin user exists
@@ -19,8 +19,8 @@ const seedAdmin = async () => {
         // Create admin user
         const adminUser = new User({
             name: "Admin User",
-            email: "admin@example.com",
-            password: "Admin@123", // This will be hashed by the pre-save hook
+            email: "admin@shyama.com",
+            password: "1Zxcvbnm2?", // This will be hashed by the pre-save hook
             role: "ADMIN",
             phone: "+1234567890",
             address: "123 Admin Street",

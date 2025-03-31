@@ -21,6 +21,7 @@ interface Medicine {
   vendor: string;
   createdAt: string;
   paymentStatus?: 'PAID' | 'PARTIAL' | 'DUE';
+  isActive?: boolean;
 }
 
 interface MedicineResponse {
@@ -237,18 +238,29 @@ const MedicineList: React.FC = () => {
     });
   }, [medicines, searchTerm, compositionSearch, categoryFilter, sortField, sortDirection]);
 
-  const handleArchive = async (id: string) => {
+  const handleArchive = async (medicineId: string) => {
     try {
-      await axios.put(API_ENDPOINTS.MEDICINE_ARCHIVE(id), {}, {
+      await axios.put(API_ENDPOINTS.MEDICINE_ARCHIVE(medicineId), {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      
-      // Refresh the medicines list
-      fetchMedicines();
       setSuccessMessage('Medicine archived successfully');
-      setTimeout(() => setSuccessMessage(''), 3000);
+      fetchMedicines();
     } catch (err) {
       setError('Failed to archive medicine');
+      console.error('Error archiving medicine:', err);
+    }
+  };
+
+  const handleUnarchive = async (medicineId: string) => {
+    try {
+      await axios.put(API_ENDPOINTS.MEDICINE_UNARCHIVE(medicineId), {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setSuccessMessage('Medicine unarchived successfully');
+      fetchMedicines();
+    } catch (err) {
+      setError('Failed to unarchive medicine');
+      console.error('Error unarchiving medicine:', err);
     }
   };
 
@@ -418,7 +430,7 @@ const MedicineList: React.FC = () => {
                 onClick={() => setShowArchived(!showArchived)}
                 className={`px-4 py-2 rounded-md text-sm font-medium ${
                   showArchived
-                    ? 'bg-indigo-600 text-white hover:bg-indigo-700'
+                    ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200'
                     : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
                 }`}
               >
@@ -601,7 +613,7 @@ const MedicineList: React.FC = () => {
                     </tr>
                   ) : (
                     filteredMedicines.map((medicine) => (
-                      <tr key={medicine._id} className="hover:bg-gray-50">
+                      <tr key={medicine._id} className={`hover:bg-gray-50 ${!medicine.isActive ? 'bg-gray-50' : ''}`}>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-indigo-600">
                             {medicine.name}
@@ -659,18 +671,29 @@ const MedicineList: React.FC = () => {
                         </td>
                         {isAdmin && !showArchived && (
                           <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                            <button
-                              onClick={() => setEditMedicine(medicine)}
-                              className="text-indigo-600 hover:text-indigo-900 mr-3"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              onClick={() => handleArchive(medicine._id)}
-                              className="text-yellow-600 hover:text-yellow-900"
-                            >
-                              Archive
-                            </button>
+                            <div className="flex items-center justify-end space-x-2">
+                              {medicine.isActive ? (
+                                <button
+                                  onClick={() => handleArchive(medicine._id)}
+                                  className="text-red-600 hover:text-red-900"
+                                >
+                                  Archive
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleUnarchive(medicine._id)}
+                                  className="text-green-600 hover:text-green-900"
+                                >
+                                  Unarchive
+                                </button>
+                              )}
+                              <button
+                                onClick={() => setEditMedicine(medicine)}
+                                className="text-indigo-600 hover:text-indigo-900 mr-3"
+                              >
+                                Edit
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
