@@ -3,7 +3,7 @@ services:
     name: sales-app-backend
     env: node
     buildCommand: cd backend && npm install && npm run build
-    startCommand: cd backend && npm start
+    startCommand: cd backend && NODE_ENV=production node dist/server.js
     envVars:
       - key: MONGODB_URI
         sync: false
@@ -30,4 +30,8 @@ services:
       - type: rewrite
         source: /*
         destination: /index.html
+        headers:
+          Cache-Control: no-cache, no-store, must-revalidate
+          Pragma: no-cache
+          Expires: 0
     autoDeploy: true 
