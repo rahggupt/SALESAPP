@@ -3,20 +3,25 @@ import mongoose from 'mongoose';
 
 const router = express.Router();
 
-router.get('/health', async (req, res) => {
+router.get('/health', (req, res) => {
+  console.log(`[${new Date().toISOString()}] Health check endpoint hit`);
+  
   try {
-    // Check database connection
     const dbState = mongoose.connection.readyState;
-    const dbStatus = dbState === 1 ? 'connected' : 'disconnected';
+    console.log(`[${new Date().toISOString()}] Database state: ${dbState}`);
     
-    res.json({
+    const response = {
       status: 'ok',
       timestamp: new Date().toISOString(),
-      database: dbStatus,
-      environment: process.env.NODE_ENV
-    });
+      database: dbState === 1 ? 'connected' : 'disconnected',
+      environment: process.env.NODE_ENV,
+      port: process.env.PORT
+    };
+    
+    console.log(`[${new Date().toISOString()}] Health check response:`, response);
+    res.json(response);
   } catch (error) {
-    console.error('Health check failed:', error);
+    console.error(`[${new Date().toISOString()}] Health check error:`, error);
     res.status(500).json({
       status: 'error',
       message: 'Health check failed',

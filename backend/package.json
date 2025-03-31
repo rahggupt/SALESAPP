@@ -2,14 +2,15 @@
   "name": "medicine-shop-backend",
   "version": "1.0.0",
   "description": "Backend for Medicine Shop Application",
-  "main": "server.js",
+  "main": "dist/server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "NODE_ENV=development nodemon server.js",
-    "prod": "NODE_ENV=production node server.js",
-    "seed": "node seed.js",
-    "seed:medicines": "node scripts/seedMedicines.js",
-    "delete:medicines": "node scripts/deleteSampleMedicines.js"
+    "start": "node dist/server.js",
+    "dev": "NODE_ENV=development ts-node-dev --respawn --transpile-only src/server.ts",
+    "build": "tsc",
+    "prod": "NODE_ENV=production node dist/server.js",
+    "seed": "ts-node src/seed.ts",
+    "seed:medicines": "ts-node src/scripts/seedMedicines.ts",
+    "delete:medicines": "ts-node src/scripts/deleteSampleMedicines.ts"
   },
   "dependencies": {
     "@types/react-beautiful-dnd": "^13.1.8",
@@ -26,6 +27,16 @@
     "uuid": "^11.1.0"
   },
   "devDependencies": {
-    "nodemon": "^2.0.22"
+    "@types/bcryptjs": "^2.4.2",
+    "@types/cors": "^2.8.13",
+    "@types/express": "^4.17.17",
+    "@types/jsonwebtoken": "^9.0.1",
+    "@types/multer": "^1.4.7",
+    "@types/node": "^18.15.11",
+    "@types/uuid": "^9.0.1",
+    "nodemon": "^2.0.22",
+    "ts-node": "^10.9.1",
+    "ts-node-dev": "^2.0.0",
+    "typescript": "^5.0.4"
   }
 }
