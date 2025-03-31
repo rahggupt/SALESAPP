@@ -6,6 +6,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
+import API_ENDPOINTS from '../config/api';
 
 interface DashboardSection {
   id: string;
@@ -92,25 +93,25 @@ const Dashboard: React.FC = () => {
 
   const fetchDashboardData = async () => {
     try {
-      const [medicineStats, salesStats, prescriptionStats] = await Promise.all([
-        axios.get('http://localhost:5000/api/medicines/stats/count', {
-          headers: { Authorization: `Bearer ${token}` }
+      const [medicinesCount, salesTotal, prescriptionsCount] = await Promise.all([
+        axios.get(API_ENDPOINTS.MEDICINE_STATS, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         }),
-        axios.get('http://localhost:5000/api/sales/stats/total', {
-          headers: { Authorization: `Bearer ${token}` }
+        axios.get(API_ENDPOINTS.SALES_STATS_TOTAL, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         }),
-        axios.get('http://localhost:5000/api/prescriptions/stats/count', {
-          headers: { Authorization: `Bearer ${token}` }
+        axios.get(API_ENDPOINTS.PRESCRIPTION_STATS, {
+          headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }
         })
       ]);
 
       setStats({
-        medicineCount: medicineStats.data.count || 0,
-        salesCount: salesStats.data.totalCount || 0,
-        prescriptionCount: prescriptionStats.data.count || 0,
-        totalRevenue: salesStats.data.totalRevenue || 0,
-        lowStockCount: medicineStats.data.lowStockCount || 0,
-        expiringCount: medicineStats.data.expiringCount || 0
+        medicineCount: medicinesCount.data.count || 0,
+        salesCount: salesTotal.data.totalCount || 0,
+        prescriptionCount: prescriptionsCount.data.count || 0,
+        totalRevenue: salesTotal.data.totalRevenue || 0,
+        lowStockCount: medicinesCount.data.lowStockCount || 0,
+        expiringCount: medicinesCount.data.expiringCount || 0
       });
       setLoading(false);
     } catch (err) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
+import API_ENDPOINTS from '../config/api';
 
 interface Vendor {
   _id: string;
@@ -45,42 +46,34 @@ const VendorManagement: React.FC = () => {
   }, [token]);
 
   const fetchVendors = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get('http://localhost:5000/api/vendors', {
+      const response = await axios.get(API_ENDPOINTS.VENDORS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVendors(response.data);
-    } catch (err) {
-      console.error('Error fetching vendors:', err);
-      setError('Failed to load vendors');
+    } catch (error) {
+      console.error('Error fetching vendors:', error);
+      setError('Failed to fetch vendors');
+    } finally {
+      setLoading(false);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
-    setError('');
-    setSuccess('');
-
     try {
       if (editingVendor) {
         await axios.put(
-          `http://localhost:5000/api/vendors/${editingVendor._id}`,
+          API_ENDPOINTS.VENDOR_BY_ID(editingVendor._id),
           formData,
           { headers: { Authorization: `Bearer ${token}` } }
         );
-        setSuccess('Vendor updated successfully!');
       } else {
-        await axios.post(
-          'http://localhost:5000/api/vendors',
-          formData,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-        setSuccess('Vendor added successfully!');
+        await axios.post(API_ENDPOINTS.VENDORS, formData, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
       }
-
-      setShowForm(false);
-      setEditingVendor(null);
       setFormData({
         name: '',
         contactPerson: '',
@@ -89,12 +82,12 @@ const VendorManagement: React.FC = () => {
         address: '',
         gstNumber: ''
       });
+      setEditingVendor(null);
+      setShowForm(false);
       fetchVendors();
-    } catch (err) {
-      console.error('Error saving vendor:', err);
-      setError('Failed to save vendor. Please try again.');
-    } finally {
-      setLoading(false);
+    } catch (error) {
+      console.error('Error saving vendor:', error);
+      setError('Failed to save vendor');
     }
   };
 
@@ -112,19 +105,16 @@ const VendorManagement: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!window.confirm('Are you sure you want to delete this vendor?')) {
-      return;
-    }
-
+    if (!window.confirm('Are you sure you want to delete this vendor?')) return;
+    
     try {
-      await axios.delete(`http://localhost:5000/api/vendors/${id}`, {
+      await axios.delete(API_ENDPOINTS.VENDOR_BY_ID(id), {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setSuccess('Vendor deleted successfully!');
       fetchVendors();
-    } catch (err) {
-      console.error('Error deleting vendor:', err);
-      setError('Failed to delete vendor. Please try again.');
+    } catch (error) {
+      console.error('Error deleting vendor:', error);
+      setError('Failed to delete vendor');
     }
   };
 

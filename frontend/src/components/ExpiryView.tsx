@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 interface Medicine {
   _id: string;
@@ -40,7 +41,7 @@ const ExpiryView: React.FC = () => {
     const fetchMedicines = async () => {
       try {
         const response = await axios.get<MedicineResponse>(
-          `http://localhost:5000/api/medicines/expiry${filter !== 'all' ? `?filter=${filter}` : ''}`,
+          API_ENDPOINTS.MEDICINE_EXPIRY(filter),
           {
             headers: { Authorization: `Bearer ${token}` }
           }

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 interface User {
   _id: string;
@@ -53,14 +54,15 @@ const UserManagement: React.FC = () => {
   }, [token]);
 
   const fetchUsers = async () => {
+    setLoading(true);
     try {
-      const response = await axios.get('http://localhost:5000/api/users', {
+      const response = await axios.get(API_ENDPOINTS.USERS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUsers(response.data);
-    } catch (err) {
-      console.error('Error fetching users:', err);
-      setError('Failed to load users');
+    } catch (error) {
+      console.error('Error fetching users:', error);
+      setError('Failed to fetch users');
     } finally {
       setLoading(false);
     }
@@ -73,11 +75,9 @@ const UserManagement: React.FC = () => {
     setSuccess('');
 
     try {
-      const response = await axios.post(
-        'http://localhost:5000/api/users',
-        newUser,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const response = await axios.post(API_ENDPOINTS.USERS, newUser, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
 
       if (response.data) {
         setSuccess(`User created successfully! Initial password: ${response.data.initialPassword}`);
@@ -112,9 +112,9 @@ const UserManagement: React.FC = () => {
     if (!resetPasswordModal.userId || !resetPasswordModal.newPassword) return;
 
     try {
-      const response = await axios.post(
-        `http://localhost:5000/api/users/${resetPasswordModal.userId}/reset-password`,
-        { newPassword: resetPasswordModal.newPassword },
+      await axios.post(
+        API_ENDPOINTS.RESET_PASSWORD(resetPasswordModal.userId),
+        { password: resetPasswordModal.newPassword },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setSuccess('Password reset successful!');
@@ -123,6 +123,7 @@ const UserManagement: React.FC = () => {
         userId: null,
         newPassword: ''
       });
+      fetchUsers();
     } catch (err: any) {
       console.error('Error resetting password:', err);
       setError(err.response?.data?.message || 'Failed to reset password');

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import API_ENDPOINTS from '../config/api';
 
 interface Medicine {
   medicineId: {
@@ -55,7 +56,7 @@ const SalesHistory: React.FC = () => {
   const fetchSales = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:5000/api/sales/history', {
+      const response = await axios.get(API_ENDPOINTS.SALES_HISTORY, {
         headers: { Authorization: `Bearer ${token}` },
         params: {
           startDate: dateRange.startDate,

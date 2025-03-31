@@ -14,6 +14,7 @@ import {
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
 import { canAccessPurchaseOrders, canEditData } from '../utils/permissions';
+import API_ENDPOINTS from '../config/api';
 
 interface User {
   _id: string;
@@ -174,7 +175,7 @@ const PurchaseOrder: React.FC = () => {
 
   const fetchUsers = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/users', {
+      const response = await axios.get(API_ENDPOINTS.USERS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setUsers(response.data);
@@ -186,7 +187,7 @@ const PurchaseOrder: React.FC = () => {
 
   const fetchVendors = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/vendors', {
+      const response = await axios.get(API_ENDPOINTS.VENDORS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVendors(response.data);
@@ -198,7 +199,7 @@ const PurchaseOrder: React.FC = () => {
 
   const fetchMedicines = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/medicines', {
+      const response = await axios.get(API_ENDPOINTS.MEDICINES, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMedicines(response.data.medicines || []);
@@ -222,7 +223,7 @@ const PurchaseOrder: React.FC = () => {
   const fetchOrders = async () => {
     try {
       console.log('Fetching orders...');
-      const response = await axios.get('http://localhost:5000/api/purchase-orders', {
+      const response = await axios.get(API_ENDPOINTS.PURCHASE_ORDERS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       // console.log('Orders response:', JSON.stringify(response.data, null, 2));
@@ -274,7 +275,7 @@ const PurchaseOrder: React.FC = () => {
 
       // Create the order
       const response = await axios.post(
-        'http://localhost:5000/api/purchase-orders',
+        API_ENDPOINTS.PURCHASE_ORDERS,
         newOrder,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -339,7 +340,7 @@ const PurchaseOrder: React.FC = () => {
   const handleStatusChange = async (orderId: string, newStatus: 'pending' | 'completed' | 'cancelled' | 'archived') => {
     try {
       const response = await axios.patch(
-        `http://localhost:5000/api/purchase-orders/${orderId}/status`,
+        API_ENDPOINTS.PURCHASE_ORDER_STATUS(orderId),
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -364,7 +365,7 @@ const PurchaseOrder: React.FC = () => {
       const assigneeValue = newAssigneeId === '' ? null : newAssigneeId;
       
       const response = await axios.patch(
-        `http://localhost:5000/api/purchase-orders/${orderId}/assignee`,
+        API_ENDPOINTS.PURCHASE_ORDER_ASSIGNEE(orderId),
         { assignee: assigneeValue },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -409,7 +410,7 @@ const PurchaseOrder: React.FC = () => {
       const email = `${newAssignee.username.toLowerCase().replace(/\s+/g, '')}@example.com`;
 
       const response = await axios.post(
-        'http://localhost:5000/api/users',
+        API_ENDPOINTS.USERS,
         {
           username: newAssignee.username,
           fullName: newAssignee.fullName,
@@ -590,7 +591,7 @@ const PurchaseOrder: React.FC = () => {
   const handleArchiveOrder = async (orderId: string) => {
     try {
       const response = await axios.patch(
-        `http://localhost:5000/api/purchase-orders/${orderId}/status`,
+        API_ENDPOINTS.PURCHASE_ORDER_STATUS(orderId),
         { status: 'archived' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -612,7 +613,7 @@ const PurchaseOrder: React.FC = () => {
   const handleUnarchiveOrder = async (orderId: string) => {
     try {
       const response = await axios.patch(
-        `http://localhost:5000/api/purchase-orders/${orderId}/status`,
+        API_ENDPOINTS.PURCHASE_ORDER_STATUS(orderId),
         { status: 'pending' },
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -648,7 +649,7 @@ const PurchaseOrder: React.FC = () => {
                               paidAmount && paidAmount > 0 ? 'PARTIAL' : 'DUE';
 
       await axios.patch(
-        `http://localhost:5000/api/purchase-orders/${orderId}/payment`,
+        API_ENDPOINTS.PURCHASE_ORDER_PAYMENT(orderId),
         {
           paymentStatus: newPaymentStatus,
           paidAmount: paidAmount || 0

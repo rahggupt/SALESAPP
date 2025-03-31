@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 // Types for prescription
 interface Prescription {
@@ -47,7 +48,7 @@ const PrescriptionList: React.FC = () => {
     setError(null);
     
     try {
-      const response = await axios.get('http://localhost:5000/api/prescriptions', {
+      const response = await axios.get(API_ENDPOINTS.PRESCRIPTIONS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -63,7 +64,7 @@ const PrescriptionList: React.FC = () => {
   // Handle status change (admin only)
   const handleStatusChange = async (id: string, newStatus: 'pending' | 'approved' | 'rejected') => {
     try {
-      await axios.put(`http://localhost:5000/api/prescriptions/${id}/status`, 
+      await axios.put(API_ENDPOINTS.PRESCRIPTION_STATUS(id), 
         { status: newStatus },
         { headers: { Authorization: `Bearer ${token}` }}
       );
@@ -90,7 +91,7 @@ const PrescriptionList: React.FC = () => {
     }
     
     try {
-      await axios.delete(`http://localhost:5000/api/prescriptions/${id}`, {
+      await axios.delete(API_ENDPOINTS.PRESCRIPTION_BY_ID(id), {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -409,7 +410,7 @@ const PrescriptionList: React.FC = () => {
                           </td>
                           <td className="px-6 py-4 whitespace-nowrap">
                             <a 
-                              href={`http://localhost:5000${prescription.imagePath}`} 
+                              href={`${process.env.REACT_APP_API_URL}${prescription.imagePath}`} 
                               target="_blank"
                               rel="noopener noreferrer"
                               className="flex items-center text-indigo-600 hover:text-indigo-900"

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 interface Medicine {
   _id: string;
@@ -34,7 +35,7 @@ const AddPrescription: React.FC = () => {
 
   const fetchMedicines = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/medicines', {
+      const response = await axios.get(API_ENDPOINTS.MEDICINES, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setMedicines(response.data);
@@ -64,7 +65,7 @@ const AddPrescription: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await axios.post('http://localhost:5000/api/prescriptions', formData, {
+      await axios.post(API_ENDPOINTS.PRESCRIPTIONS, formData, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setSuccess(true);

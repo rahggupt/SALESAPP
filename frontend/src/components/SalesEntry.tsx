@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 // Types
 interface Medicine {
@@ -56,19 +57,16 @@ const SalesEntry: React.FC = () => {
   // Fetch medicines on component mount
   useEffect(() => {
     const fetchMedicines = async () => {
+      setLoading(true);
       try {
-        const response = await axios.get<MedicineResponse>('http://localhost:5000/api/medicines', {
-          headers: { Authorization: `Bearer ${token}` },
-          params: {
-            limit: 100, // Fetch more medicines for the sales entry
-            archived: false // Only fetch non-archived medicines
-          }
+        const response = await axios.get<MedicineResponse>(API_ENDPOINTS.MEDICINES, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         setMedicines(response.data.medicines);
-        setLoading(false);
-      } catch (err) {
-        console.error('Error fetching medicines:', err);
-        setError('Failed to fetch medicines. Please try again.');
+      } catch (error) {
+        console.error('Error fetching medicines:', error);
+        setError('Failed to fetch medicines');
+      } finally {
         setLoading(false);
       }
     };
@@ -240,11 +238,8 @@ const SalesEntry: React.FC = () => {
         formData.append('prescriptionImage', prescriptionImage);
       }
       
-      await axios.post('http://localhost:5000/api/sales', formData, {
-        headers: { 
-          'Content-Type': 'multipart/form-data',
-          Authorization: `Bearer ${token}`
-        }
+      await axios.post(API_ENDPOINTS.SALES, formData, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       
       setSuccessMessage('Sale recorded successfully!');

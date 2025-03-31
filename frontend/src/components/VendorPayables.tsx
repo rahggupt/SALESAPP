@@ -2,24 +2,26 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import API_ENDPOINTS from '../config/api';
 
 interface VendorTransaction {
   _id: string;
-  vendor: {
-    _id: string;
-    name: string;
-  };
-  medicine: {
-    _id: string;
-    name: string;
-  };
-  transactionType: 'PURCHASE' | 'PAYMENT';
+  vendorId: string;
   amount: number;
-  paymentStatus: 'PAID' | 'DUE' | 'PARTIAL';
-  paidAmount: number;
-  dueAmount: number;
+  type: 'debit' | 'credit';
+  description: string;
   date: string;
-  notes?: string;
+}
+
+interface Vendor {
+  _id: string;
+  name: string;
+  contactPerson: string;
+  phone: string;
+  email: string;
+  address: string;
+  gstNumber: string;
+  transactions?: VendorTransaction[];
 }
 
 const VendorPayables: React.FC = () => {
@@ -30,40 +32,42 @@ const VendorPayables: React.FC = () => {
   const [totalPayables, setTotalPayables] = useState(0);
 
   const calculateStats = (transactionsData: VendorTransaction[]) => {
-    const total = transactionsData.reduce((acc, curr) => acc + curr.dueAmount, 0);
+    const total = transactionsData.reduce((acc, curr) => acc + curr.amount, 0);
     setTotalPayables(total);
   };
 
-  const fetchTransactions = async () => {
+  const fetchVendorsAndTransactions = async () => {
+    setLoading(true);
     try {
-      setLoading(true);
-      // First fetch all vendors
-      const vendorsResponse = await axios.get('http://localhost:5000/api/vendors', {
+      const vendorsResponse = await axios.get(API_ENDPOINTS.VENDORS, {
         headers: { Authorization: `Bearer ${token}` }
       });
-
-      // Then fetch transactions for each vendor
-      const transactionsPromises = vendorsResponse.data.map((vendor: any) =>
-        axios.get(`http://localhost:5000/api/vendors/${vendor._id}/transactions`, {
-          headers: { Authorization: `Bearer ${token}` }
+      
+      const vendorsWithTransactions = await Promise.all(
+        vendorsResponse.data.map(async (vendor: Vendor) => {
+          const transactionsResponse = await axios.get(
+            API_ENDPOINTS.VENDOR_TRANSACTIONS(vendor._id),
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          return {
+            ...vendor,
+            transactions: transactionsResponse.data
+          };
         })
       );
-
-      const transactionsResponses = await Promise.all(transactionsPromises);
-      const allTransactions = transactionsResponses.flatMap(response => response.data);
-
-      setTransactions(allTransactions);
-      calculateStats(allTransactions);
-    } catch (err) {
-      setError('Failed to fetch vendor transactions');
-      console.error('Error fetching transactions:', err);
+      
+      setTransactions(vendorsWithTransactions.flatMap(vendor => vendor.transactions));
+      calculateStats(vendorsWithTransactions.flatMap(vendor => vendor.transactions));
+    } catch (error) {
+      console.error('Error fetching vendors and transactions:', error);
+      setError('Failed to fetch vendors and transactions');
     } finally {
       setLoading(false);
     }
   };
 
   useEffect(() => {
-    fetchTransactions();
+    fetchVendorsAndTransactions();
   }, [token]);
 
   const formatDate = (dateString: string) => {
@@ -187,28 +191,27 @@ const VendorPayables: React.FC = () => {
                       {formatDate(transaction.date)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.vendor.name}
+                      {transaction.vendorId}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.medicine.name}
+                      {transaction.description}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      {transaction.transactionType}
+                      {transaction.type}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       ₹{transaction.amount.toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       <span className={`px-2 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                        transaction.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800' :
-                        transaction.paymentStatus === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
+                        transaction.type === 'debit' ? 'bg-green-100 text-green-800' :
                         'bg-red-100 text-red-800'
                       }`}>
-                        {transaction.paymentStatus}
+                        {transaction.type}
                       </span>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-red-600 font-medium">
-                      ₹{transaction.dueAmount.toFixed(2)}
+                      ₹{transaction.amount.toFixed(2)}
                     </td>
                   </tr>
                 ))}

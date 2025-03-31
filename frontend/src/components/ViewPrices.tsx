@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 import { Link } from 'react-router-dom';
 
 interface Medicine {
@@ -21,28 +22,33 @@ interface MedicineResponse {
 
 const ViewPrices: React.FC = () => {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const { token } = useAuth();
 
   useEffect(() => {
-    const fetchMedicines = async () => {
-      try {
-        const response = await axios.get<MedicineResponse>('http://localhost:5000/api/medicines', {
-          headers: { Authorization: `Bearer ${token}` }
-        });
-        setMedicines(response.data.medicines);
-        setLoading(false);
-      } catch (err) {
-        setError('Failed to fetch medicines');
-        setLoading(false);
-      }
-    };
-
     fetchMedicines();
-  }, [token]);
+  }, []);
+
+  const fetchMedicines = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await axios.get<MedicineResponse>(API_ENDPOINTS.MEDICINES, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      
+      setMedicines(response.data.medicines);
+    } catch (err) {
+      setError('Failed to fetch medicines. Please try again.');
+      console.error('Error fetching medicines:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
 
   const filteredMedicines = medicines?.filter(medicine => {
     const matchesSearch = medicine.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
@@ -52,6 +58,14 @@ const ViewPrices: React.FC = () => {
   }) || [];
 
   const categories = Array.from(new Set(medicines?.map(medicine => medicine.category) || []));
+
+  if (loading) {
+    return <div>Loading...</div>;
+  }
+
+  if (error) {
+    return <div className="text-red-500">{error}</div>;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">

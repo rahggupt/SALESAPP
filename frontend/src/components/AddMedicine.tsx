@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 interface Vendor {
   _id: string;
@@ -96,37 +97,34 @@ const AddMedicine: React.FC = () => {
 
   const fetchCategories = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/medicines/categories', {
+      const response = await axios.get(API_ENDPOINTS.MEDICINE_CATEGORIES, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCategories(response.data);
     } catch (err) {
-      console.error('Error fetching categories:', err);
-      setError('Failed to load categories');
+      setError('Failed to fetch categories');
     }
   };
 
   const fetchCompositions = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/medicines/compositions', {
+      const response = await axios.get(API_ENDPOINTS.MEDICINE_COMPOSITIONS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setCompositions(response.data);
     } catch (err) {
-      console.error('Error fetching compositions:', err);
-      setError('Failed to load compositions');
+      setError('Failed to fetch compositions');
     }
   };
 
   const fetchVendors = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/vendors', {
+      const response = await axios.get(API_ENDPOINTS.VENDORS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setVendors(response.data);
     } catch (err) {
-      console.error('Error fetching vendors:', err);
-      setError('Failed to load vendors');
+      setError('Failed to fetch vendors');
     }
   };
 
@@ -206,11 +204,8 @@ const AddMedicine: React.FC = () => {
       };
 
       // Create medicine
-      await axios.post('http://localhost:5000/api/medicines', medicineData, {
-        headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        }
+      await axios.post(API_ENDPOINTS.MEDICINES, medicineData, {
+        headers: { Authorization: `Bearer ${token}` }
       });
 
       setSuccess('Medicine added successfully!');
@@ -344,35 +339,20 @@ const AddMedicine: React.FC = () => {
 
   const handleVendorSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setVendorError('');
-
     try {
-      const response = await axios.post(
-        'http://localhost:5000/api/vendors',
-        vendorFormData,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      // Add the new vendor to the vendors list
-      setVendors(prev => [...prev, response.data]);
-      
-      // Select the new vendor
-      setFormData(prev => ({
-        ...prev,
-        vendor: response.data._id
-      }));
-
-      // Reset form and close modal
+      await axios.post(API_ENDPOINTS.VENDORS, vendorFormData, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setShowVendorModal(false);
+      fetchVendors();
       setVendorFormData({
         name: '',
         phone: '',
         email: '',
         address: ''
       });
-      setShowVendorModal(false);
     } catch (err) {
-      console.error('Error adding vendor:', err);
-      setVendorError('Failed to add vendor. Please try again.');
+      setError('Failed to add vendor');
     }
   };
 

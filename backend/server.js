@@ -14,14 +14,33 @@ const User = require('./models/User');
 
 const app = express();
 
+// CORS configuration
+const allowedOrigins = [
+  'http://localhost:3000',
+  'https://sales-app-frontend.onrender.com',
+  'https://sales-app.onrender.com',
+  'https://sales-app-backend.onrender.com',
+  process.env.FRONTEND_URL // Add this to your environment variables
+].filter(Boolean); // Remove any undefined values
+
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) === -1) {
+      const msg = 'The CORS policy for this site does not allow access from the specified Origin.';
+      return callback(new Error(msg), false);
+    }
+    return callback(null, true);
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept']
+}));
+
 // Middleware
 app.use(express.json());
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' 
-    ? ['https://sales-app-frontend.onrender.com', 'https://sales-app.onrender.com']
-    : 'http://localhost:3000',
-  credentials: true
-}));
 
 // Routes
 app.use('/api/health', require('./routes/health'));
@@ -58,8 +77,8 @@ mongoose.connect(process.env.MONGODB_URI)
 
       await adminUser.save();
       console.log('Admin user created successfully');
-      console.log('Email: rohit@example.com');
-      console.log('Password: Admin@123');
+      console.log('Email: rohit@shyama.com');
+      console.log('Password: admin@123');
       console.log('Please change the password after first login!');
     }
   })

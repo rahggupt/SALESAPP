@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
+import API_ENDPOINTS from '../config/api';
 
 interface PaymentHistory {
   amount: number;
@@ -12,29 +13,14 @@ interface PaymentHistory {
 interface Medicine {
   _id: string;
   name: string;
-  composition: string[];
-  description: string;
   category: string;
+  composition: string[];
   price: number;
-  priceUnit: string;
-  unitsPerPackage: number;
   stock: number;
   expiryDate: string;
-  manufacturer: string;
-  batchNumber: string;
-  requiresPrescription: boolean;
-  isArchived: boolean;
-  storage: 'cold' | 'extreme_cold' | 'hot' | 'extreme_hot';
-  purchasePrice: number;
-  paymentStatus: 'PAID' | 'PARTIAL' | 'DUE';
-  paidAmount: number;
-  dueAmount: number;
-  vendor: {
-    _id: string;
-    name: string;
-  };
-  paymentHistory: PaymentHistory[];
-  lastPaymentDate: string;
+  vendor: string;
+  createdAt: string;
+  paymentStatus?: 'PAID' | 'PARTIAL' | 'DUE';
 }
 
 interface MedicineResponse {
@@ -69,15 +55,15 @@ const calculatePerPiecePrice = (price: number, unitsPerPackage: number): number 
 
 const MedicineList: React.FC = () => {
   const [medicines, setMedicines] = useState<Medicine[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [loading, setLoading] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [sortField, setSortField] = useState<keyof Medicine>('name');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
   const [deleteConfirm, setDeleteConfirm] = useState<string | null>(null);
   const [editMedicine, setEditMedicine] = useState<Medicine | null>(null);
-  const [successMessage, setSuccessMessage] = useState('');
+  const [successMessage, setSuccessMessage] = useState<string>('');
   const { token, isAdmin } = useAuth();
   const [showArchived, setShowArchived] = useState(false);
   const [compositionSearch, setCompositionSearch] = useState('');
@@ -116,9 +102,11 @@ const MedicineList: React.FC = () => {
   }, [showArchived, currentPage, sortField, sortDirection, debouncedSearchTerm, debouncedCompositionSearch, categoryFilter]);
 
   const fetchMedicines = async () => {
+    setLoading(true);
+    setError(null);
+    
     try {
-      setLoading(true);
-      const response = await axios.get<MedicineResponse>(`http://localhost:5000/api/medicines`, {
+      const response = await axios.get(API_ENDPOINTS.MEDICINES, {
         headers: { Authorization: `Bearer ${token}` },
         params: {
           page: currentPage,
@@ -135,23 +123,27 @@ const MedicineList: React.FC = () => {
       setMedicines(response.data.medicines);
       setTotalPages(response.data.totalPages);
       setCategories(response.data.categories);
-      setLoading(false);
     } catch (err) {
       setError('Failed to fetch medicines');
+    } finally {
       setLoading(false);
     }
   };
 
-  const handleDeleteMedicine = async (id: string) => {
+  const handleDelete = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this medicine?')) {
+      return;
+    }
+    
     try {
-      await axios.delete(`http://localhost:5000/api/medicines/${id}`, {
+      await axios.delete(API_ENDPOINTS.MEDICINE_BY_ID(id), {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMedicines(medicines.filter(med => med._id !== id));
+      
+      // Remove from local state
+      setMedicines(prev => prev.filter(medicine => medicine._id !== id));
       setDeleteConfirm(null);
       setSuccessMessage('Medicine deleted successfully');
-      
-      // Clear success message after 3 seconds
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
       setError('Failed to delete medicine');
@@ -165,7 +157,7 @@ const MedicineList: React.FC = () => {
 
     try {
       await axios.put(
-        `http://localhost:5000/api/medicines/${editMedicine._id}`,
+        API_ENDPOINTS.MEDICINE_BY_ID(editMedicine._id),
         editMedicine,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -218,14 +210,14 @@ const MedicineList: React.FC = () => {
       
       const matchesSearch = 
         (medicine.name?.toLowerCase() || '').includes(searchTermLower) ||
-        (medicine.description?.toLowerCase() || '').includes(searchTermLower) ||
-        (medicine.manufacturer?.toLowerCase() || '').includes(searchTermLower) ||
-        (medicine.batchNumber?.toLowerCase() || '').includes(searchTermLower);
+        (medicine.composition?.some((comp: string) => 
+          comp.toLowerCase().includes(searchTermLower)
+        ) ?? false);
       
       const matchesComposition = !compositionSearchLower || 
-        medicine.composition.some(comp => 
+        (medicine.composition?.some((comp: string) => 
           comp.toLowerCase().includes(compositionSearchLower)
-        );
+        ) ?? false);
       
       const matchesCategory = !categoryFilter || medicine.category === categoryFilter;
       
@@ -237,18 +229,22 @@ const MedicineList: React.FC = () => {
   const filteredMedicines = React.useMemo(() => {
     const filtered = getFilteredMedicines();
     return filtered.sort((a, b) => {
-      if (a[sortField] < b[sortField]) return sortDirection === 'asc' ? -1 : 1;
-      if (a[sortField] > b[sortField]) return sortDirection === 'asc' ? 1 : -1;
+      const aValue = a[sortField] ?? '';
+      const bValue = b[sortField] ?? '';
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
       return 0;
     });
   }, [medicines, searchTerm, compositionSearch, categoryFilter, sortField, sortDirection]);
 
-  const handleArchiveMedicine = async (id: string) => {
+  const handleArchive = async (id: string) => {
     try {
-      await axios.put(`http://localhost:5000/api/medicines/${id}/archive`, {}, {
+      await axios.put(API_ENDPOINTS.MEDICINE_ARCHIVE(id), {}, {
         headers: { Authorization: `Bearer ${token}` }
       });
-      setMedicines(medicines.filter(med => med._id !== id));
+      
+      // Refresh the medicines list
+      fetchMedicines();
       setSuccessMessage('Medicine archived successfully');
       setTimeout(() => setSuccessMessage(''), 3000);
     } catch (err) {
@@ -258,7 +254,7 @@ const MedicineList: React.FC = () => {
 
   const fetchVendorPayments = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/purchase-orders', {
+      const response = await axios.get(API_ENDPOINTS.PURCHASE_ORDERS, {
         headers: { Authorization: `Bearer ${token}` }
       });
       
@@ -299,7 +295,7 @@ const MedicineList: React.FC = () => {
   const fetchPaymentHistory = async (medicineId: string) => {
     try {
       const response = await axios.get(
-        `http://localhost:5000/api/medicines/${medicineId}/payment-history`,
+        API_ENDPOINTS.MEDICINE_PAYMENT_HISTORY(medicineId),
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setPaymentHistory(response.data.paymentHistory);
@@ -314,7 +310,7 @@ const MedicineList: React.FC = () => {
 
     try {
       await axios.put(
-        `http://localhost:5000/api/medicines/${paymentModal.medicine._id}/payment`,
+        API_ENDPOINTS.MEDICINE_PAYMENT(paymentModal.medicine._id),
         {
           paidAmount: paymentAmount,
           paymentStatus
@@ -610,13 +606,10 @@ const MedicineList: React.FC = () => {
                           <div className="text-sm font-medium text-indigo-600">
                             {medicine.name}
                           </div>
-                          <div className="text-xs text-gray-500">
-                            Mfr: {medicine.manufacturer}
-                          </div>
                         </td>
                         <td className="px-6 py-4">
                           <div className="text-sm text-gray-900 max-w-xs truncate">
-                            {medicine.description}
+                            {medicine.composition.join(', ')}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -626,16 +619,7 @@ const MedicineList: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm font-medium text-green-600">
-                            NPR {medicine.price.toFixed(2)}
-                          </div>
-                          <div className="text-xs text-gray-500">
-                            ≈ INR {convertToINR(medicine.price).toFixed(2)}
-                          </div>
-                          <div className="text-xs text-gray-400">
-                            per {medicine.priceUnit} ({medicine.unitsPerPackage} units)
-                          </div>
-                          <div className="text-xs text-green-600 mt-1">
-                            NPR {calculatePerPiecePrice(medicine.price, medicine.unitsPerPackage).toFixed(2)} per piece
+                            ₹{medicine.price.toFixed(2)}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -649,27 +633,17 @@ const MedicineList: React.FC = () => {
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-500">
-                            {medicine.expiryDate}
-                          </div>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                            (medicine.storage || 'cold') === 'cold' ? 'bg-blue-100 text-blue-800' :
-                            (medicine.storage || 'cold') === 'extreme_cold' ? 'bg-indigo-100 text-indigo-800' :
-                            (medicine.storage || 'cold') === 'hot' ? 'bg-orange-100 text-orange-800' :
-                            'bg-red-100 text-red-800'
-                          }`}>
-                            {(medicine.storage || 'cold').replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase())}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 whitespace-nowrap">
-                          <div className="text-sm text-gray-900">
-                            {medicine.composition.join(', ')}
+                            {new Date(medicine.expiryDate).toLocaleDateString()}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div className="text-sm text-gray-900">
-                            {medicine.batchNumber}
+                            {medicine.vendor}
+                          </div>
+                        </td>
+                        <td className="px-6 py-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-900">
+                            {new Date(medicine.createdAt).toLocaleDateString()}
                           </div>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap">
@@ -681,33 +655,6 @@ const MedicineList: React.FC = () => {
                             }`}>
                               {medicine.paymentStatus}
                             </span>
-                            <div className="text-xs text-gray-500 mt-1">
-                              Paid: NPR {medicine.paidAmount.toFixed(2)}
-                            </div>
-                            <div className="text-xs text-gray-500">
-                              Due: NPR {medicine.dueAmount.toFixed(2)}
-                            </div>
-                            {isAdmin && (
-                              <div className="mt-1 space-x-2">
-                                {medicine.paymentStatus !== 'PAID' && (
-                                  <button
-                                    onClick={() => setPaymentModal({ isOpen: true, medicine })}
-                                    className="text-xs text-indigo-600 hover:text-indigo-900"
-                                  >
-                                    Update Payment
-                                  </button>
-                                )}
-                                <button
-                                  onClick={() => {
-                                    setShowPaymentHistory({ isOpen: true, medicine });
-                                    fetchPaymentHistory(medicine._id);
-                                  }}
-                                  className="text-xs text-gray-600 hover:text-gray-900"
-                                >
-                                  View History
-                                </button>
-                              </div>
-                            )}
                           </div>
                         </td>
                         {isAdmin && !showArchived && (
@@ -719,8 +666,8 @@ const MedicineList: React.FC = () => {
                               Edit
                             </button>
                             <button
-                              onClick={() => handleArchiveMedicine(medicine._id)}
-                              className="text-red-600 hover:text-red-900"
+                              onClick={() => handleArchive(medicine._id)}
+                              className="text-yellow-600 hover:text-yellow-900"
                             >
                               Archive
                             </button>
@@ -783,7 +730,7 @@ const MedicineList: React.FC = () => {
                 Cancel
               </button>
               <button
-                onClick={() => handleDeleteMedicine(deleteConfirm)}
+                onClick={() => handleDelete(deleteConfirm)}
                 className="bg-red-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-red-700"
               >
                 Delete
@@ -836,18 +783,19 @@ const MedicineList: React.FC = () => {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Description</label>
                 <textarea
-                  name="description"
-                  value={editMedicine.description}
-                  onChange={handleEditChange}
-                  rows={3}
+                  name="composition"
+                  value={editMedicine.composition.join(', ')}
+                  onChange={(e) => setEditMedicine({
+                    ...editMedicine,
+                    composition: e.target.value.split(',').map(c => c.trim())
+                  })}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                  required
                 />
               </div>
               
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Price (NPR)</label>
+                  <label className="block text-sm font-medium text-gray-700">Price</label>
                   <input
                     type="number"
                     name="price"
@@ -888,23 +836,11 @@ const MedicineList: React.FC = () => {
 
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Manufacturer</label>
+                  <label className="block text-sm font-medium text-gray-700">Vendor</label>
                   <input
                     type="text"
-                    name="manufacturer"
-                    value={editMedicine.manufacturer}
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-                
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Batch Number</label>
-                  <input
-                    type="text"
-                    name="batchNumber"
-                    value={editMedicine.batchNumber}
+                    name="vendor"
+                    value={editMedicine.vendor}
                     onChange={handleEditChange}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                     required
@@ -912,84 +848,6 @@ const MedicineList: React.FC = () => {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Price Unit</label>
-                  <select
-                    name="priceUnit"
-                    value={editMedicine.priceUnit}
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  >
-                    <option value="piece">Piece</option>
-                    <option value="box">Box</option>
-                    <option value="strip">Strip</option>
-                    <option value="bottle">Bottle</option>
-                    <option value="pack">Pack</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Units per Package</label>
-                  <input
-                    type="number"
-                    name="unitsPerPackage"
-                    value={editMedicine.unitsPerPackage}
-                    onChange={handleEditChange}
-                    min="1"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                  <p className="mt-1 text-xs text-gray-500">Number of pieces in one {editMedicine.priceUnit}</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Purchase Price (NPR)</label>
-                  <input
-                    type="number"
-                    name="purchasePrice"
-                    value={editMedicine.purchasePrice}
-                    onChange={handleEditChange}
-                    step="0.01"
-                    min="0"
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Storage Requirements</label>
-                  <select
-                    name="storage"
-                    value={editMedicine.storage}
-                    onChange={handleEditChange}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
-                    required
-                  >
-                    <option value="cold">Cold</option>
-                    <option value="extreme_cold">Extreme Cold</option>
-                    <option value="hot">Hot</option>
-                    <option value="extreme_hot">Extreme Hot</option>
-                  </select>
-                </div>
-              </div>
-
-              <div className="flex items-center">
-                <input
-                  type="checkbox"
-                  name="requiresPrescription"
-                  checked={editMedicine.requiresPrescription}
-                  onChange={handleEditChange}
-                  className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
-                />
-                <label className="ml-2 block text-sm text-gray-900">
-                  Requires Prescription
-                </label>
-              </div>
-              
               <div className="flex justify-end pt-4 border-t border-gray-200 space-x-3">
                 <button
                   type="button"
@@ -1062,7 +920,7 @@ const MedicineList: React.FC = () => {
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Total Amount</label>
-                <p className="mt-1 text-sm text-gray-900">NPR {paymentModal.medicine.purchasePrice.toFixed(2)}</p>
+                <p className="mt-1 text-sm text-gray-900">₹{paymentModal.medicine.price.toFixed(2)}</p>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Amount Paid</label>
@@ -1071,7 +929,7 @@ const MedicineList: React.FC = () => {
                   value={paymentAmount}
                   onChange={(e) => setPaymentAmount(Number(e.target.value))}
                   min="0"
-                  max={paymentModal.medicine.purchasePrice}
+                  max={paymentModal.medicine.price}
                   className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                 />
               </div>
@@ -1125,9 +983,9 @@ const MedicineList: React.FC = () => {
             <div className="mb-4">
               <h4 className="text-sm font-medium text-gray-700">Medicine Details</h4>
               <p className="text-sm text-gray-900">{showPaymentHistory.medicine.name}</p>
-              <p className="text-sm text-gray-500">Vendor: {showPaymentHistory.medicine.vendor.name}</p>
+              <p className="text-sm text-gray-500">Vendor: {showPaymentHistory.medicine.vendor}</p>
               <p className="text-sm text-gray-500">
-                Total Amount: NPR {showPaymentHistory.medicine.purchasePrice.toFixed(2)}
+                Total Amount: ₹{showPaymentHistory.medicine.price.toFixed(2)}
               </p>
             </div>
 
@@ -1153,7 +1011,7 @@ const MedicineList: React.FC = () => {
                         {new Date(payment.date).toLocaleDateString()}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        NPR {payment.amount.toFixed(2)}
+                        ₹{payment.amount.toFixed(2)}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${

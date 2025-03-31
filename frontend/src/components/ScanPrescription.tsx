@@ -2,6 +2,7 @@ import React, { useState, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 const ScanPrescription: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -81,14 +82,10 @@ const ScanPrescription: React.FC = () => {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedFile || !patientName || !doctorName) {
-      setError('Please fill all required fields and upload a prescription image');
+    if (!selectedFile) {
+      setError('Please select a file');
       return;
     }
-
-    setIsUploading(true);
-    setUploadProgress(0);
-    setError('');
 
     const formData = new FormData();
     formData.append('prescriptionImage', selectedFile);
@@ -96,9 +93,13 @@ const ScanPrescription: React.FC = () => {
     formData.append('doctorName', doctorName);
     formData.append('notes', notes);
 
+    setIsUploading(true);
+    setUploadProgress(0);
+    setError('');
+
     try {
-      await axios.post('http://localhost:5000/api/prescriptions/upload', formData, {
-        headers: { 
+      await axios.post(API_ENDPOINTS.PRESCRIPTION_UPLOAD, formData, {
+        headers: {
           'Content-Type': 'multipart/form-data',
           Authorization: `Bearer ${token}`
         },
@@ -124,6 +125,7 @@ const ScanPrescription: React.FC = () => {
         setSuccess('');
       }, 5000);
     } catch (err) {
+      console.error('Error uploading prescription:', err);
       setError('Failed to upload prescription. Please try again.');
     } finally {
       setIsUploading(false);

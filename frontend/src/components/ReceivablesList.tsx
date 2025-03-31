@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import axios from 'axios';
 import { Link } from 'react-router-dom';
+import API_ENDPOINTS from '../config/api';
 
 interface CreditSale {
   _id: string;
@@ -51,7 +52,7 @@ const ReceivablesList: React.FC = () => {
   const fetchCreditSales = async () => {
     try {
       setLoading(true);
-      const response = await axios.get('http://localhost:5000/api/sales/credit', {
+      const response = await axios.get(API_ENDPOINTS.SALES_CREDIT, {
         headers: { Authorization: `Bearer ${token}` },
         params: {
           startDate: dateRange.startDate,
@@ -105,7 +106,7 @@ const ReceivablesList: React.FC = () => {
         return;
       }
 
-      await axios.put(`http://localhost:5000/api/sales/${saleId}/payment`, 
+      await axios.put(API_ENDPOINTS.SALE_PAYMENT(saleId), 
         { amount: paymentAmount },
         { headers: { Authorization: `Bearer ${token}` }}
       );

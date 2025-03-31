@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import API_ENDPOINTS from '../config/api';
 
 interface Creditor {
   customer: string;
@@ -18,17 +19,16 @@ const CreditorsView: React.FC = () => {
 
   useEffect(() => {
     const fetchCreditors = async () => {
+      setLoading(true);
       try {
-        const response = await axios.get<{ creditors: Creditor[] }>(
-          'http://localhost:5000/api/sales/creditors',
-          {
-            headers: { Authorization: `Bearer ${token}` }
-          }
-        );
-        setCreditors(response.data.creditors);
-        setLoading(false);
-      } catch (err) {
+        const response = await axios.get(API_ENDPOINTS.SALES_CREDITORS, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setCreditors(response.data);
+      } catch (error) {
+        console.error('Error fetching creditors:', error);
         setError('Failed to fetch creditors');
+      } finally {
         setLoading(false);
       }
     };

@@ -1,9 +1,10 @@
 import axios from 'axios';
+import API_ENDPOINTS from '../config/api';
 
-// Configure axios defaults
-axios.defaults.baseURL = 'http://localhost:5000';
+// Set default base URL
+axios.defaults.baseURL = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 
-// Add a request interceptor to add the auth token to all requests
+// Add request interceptor for authentication
 axios.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem('token');
@@ -13,6 +14,18 @@ axios.interceptors.request.use(
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor for error handling
+axios.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      localStorage.removeItem('token');
+      window.location.href = '/login';
+    }
     return Promise.reject(error);
   }
 );
