@@ -10,6 +10,7 @@ const salesRoutes = require('./routes/sales');
 const vendorsRouter = require('./routes/vendors');
 const purchaseOrdersRouter = require('./routes/purchaseOrders');
 const userRoutes = require('./routes/users');
+const User = require('./models/User');
 
 const app = express();
 
@@ -35,9 +36,33 @@ if (process.env.NODE_ENV === 'production') {
   app.use('/uploads/prescriptions', express.static(path.join(__dirname, 'uploads/prescriptions')));
 }
 
-// Connect to MongoDB
+// Connect to MongoDB and seed admin user if needed
 mongoose.connect(process.env.MONGODB_URI)
-  .then(() => console.log('Connected to MongoDB'))
+  .then(async () => {
+    console.log('Connected to MongoDB');
+    
+    // Check if admin user exists
+    const adminExists = await User.findOne({ role: 'ADMIN' });
+    
+    if (!adminExists) {
+      console.log('No admin user found. Creating admin user...');
+      const adminUser = new User({
+        name: "Rohit Gupta",
+        email: "rohit@shyama.com",
+        password: "admin@123",
+        role: "ADMIN",
+        phone: "+1234567890",
+        address: "123 Admin Street",
+        isActive: true
+      });
+
+      await adminUser.save();
+      console.log('Admin user created successfully');
+      console.log('Email: rohit@example.com');
+      console.log('Password: Admin@123');
+      console.log('Please change the password after first login!');
+    }
+  })
   .catch(err => console.error('MongoDB connection error:', err));
 
 // Routes
