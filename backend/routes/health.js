@@ -8,14 +8,19 @@ router.get('/', async (req, res) => {
     const dbState = mongoose.connection.readyState;
     const dbStatus = dbState === 1 ? 'connected' : 'disconnected';
     
-    res.json({
-      status: 'healthy',
-      database: dbStatus,
-      timestamp: new Date().toISOString()
+    res.status(200).json({
+      status: 'ok',
+      message: 'pong',
+      timestamp: new Date().toISOString(),
+      database: {
+        status: dbStatus,
+        readyState: dbState
+      }
     });
   } catch (error) {
     res.status(500).json({
-      status: 'unhealthy',
+      status: 'error',
+      message: 'Health check failed',
       error: error.message
     });
   }
