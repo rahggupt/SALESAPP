@@ -22,7 +22,8 @@ axios.interceptors.request.use(
 axios.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response?.status === 401) {
+    // Only redirect to login if it's not already a login request
+    if (error.response?.status === 401 && !error.config.url.includes('/api/auth/login')) {
       localStorage.removeItem('token');
       window.location.href = '/login';
     }

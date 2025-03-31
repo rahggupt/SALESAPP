@@ -48,14 +48,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = async (email: string, password: string) => {
     try {
+      console.debug('Attempting login with email:', email);
       const response = await axios.post('/api/auth/login', { email, password });
+      console.debug('Login response:', response.data);
       const { token: newToken, user: userData } = response.data;
       localStorage.setItem('token', newToken);
       setToken(newToken);
       setUser(userData);
       setIsAdmin(userData.role === 'ADMIN');
-    } catch (error) {
-      console.error('Login failed:', error);
+    } catch (error: any) {
+      console.error('Login failed:', {
+        status: error.response?.status,
+        message: error.response?.data?.message || error.message,
+        url: error.config?.url,
+        method: error.config?.method
+      });
       throw error;
     }
   };
