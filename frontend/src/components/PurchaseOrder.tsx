@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   ShoppingCartIcon, 
   CheckCircleIcon, 
@@ -13,6 +13,7 @@ import {
   ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import { toast } from 'react-hot-toast';
+import { canAccessPurchaseOrders, canEditData } from '../utils/permissions';
 
 interface User {
   _id: string;
@@ -35,13 +36,17 @@ interface Medicine {
 }
 
 interface PurchaseOrderItem {
-  medicineId: string;
+  name: string;
+  description: string;
+  category: string;
+  manufacturer: string;
+  batchNumber?: string;
   quantity: number;
-  medicine?: {
-    _id: string;
-    name: string;
-    unit: string;
-  };
+  price: number;
+  priceUnit?: string;
+  unitsPerPackage?: number;
+  storage: 'cold' | 'extreme_cold' | 'hot' | 'extreme_hot';
+  requiresPrescription: boolean;
 }
 
 interface PurchaseOrder {
@@ -51,16 +56,7 @@ interface PurchaseOrder {
     _id: string;
     name: string;
   };
-  items: {
-    medicineId: {
-      _id: string;
-      name: string;
-      unit: string;
-    };
-    quantity: number;
-    price: number;
-  }[];
-  totalAmount: number;
+  items: PurchaseOrderItem[];
   status: 'pending' | 'completed' | 'cancelled' | 'archived';
   paymentStatus: 'PAID' | 'PARTIAL' | 'DUE';
   paidAmount: number;
@@ -78,20 +74,19 @@ interface DashboardStats {
   completedOrders: number;
   cancelledOrders: number;
   totalItems: number;
-  totalValue: number;
 }
 
 interface ColumnVisibility {
   orderNumber: boolean;
   vendor: boolean;
   items: boolean;
-  quantity: boolean;
   total: boolean;
   status: boolean;
   paymentStatus: boolean;
-  payable: boolean;
+  paidAmount: boolean;
+  dueAmount: boolean;
   assignee: boolean;
-  date: boolean;
+  createdAt: boolean;
   actions: boolean;
 }
 
@@ -106,10 +101,25 @@ const PurchaseOrder: React.FC = () => {
   const [showForm, setShowForm] = useState(false);
   const [editingOrder, setEditingOrder] = useState<string | null>(null);
   const { token, isAdmin, user } = useAuth();
-  const [formData, setFormData] = useState({
+  const [newOrder, setNewOrder] = useState<{
+    vendorId: string;
+    items: PurchaseOrderItem[];
+    assigneeId?: string;
+  }>({
     vendorId: '',
-    items: [{ medicineId: '', quantity: 1 }],
-    assigneeId: ''
+    items: [{
+      name: '',
+      description: '',
+      category: '',
+      manufacturer: '',
+      batchNumber: '',
+      quantity: 1,
+      price: 0,
+      priceUnit: 'piece',
+      unitsPerPackage: 1,
+      storage: 'cold',
+      requiresPrescription: false
+    }]
   });
   const [newAssignee, setNewAssignee] = useState({
     username: '',
@@ -125,8 +135,7 @@ const PurchaseOrder: React.FC = () => {
     pendingOrders: 0,
     completedOrders: 0,
     cancelledOrders: 0,
-    totalItems: 0,
-    totalValue: 0
+    totalItems: 0
   });
   const [filters, setFilters] = useState({
     status: 'all',
@@ -142,18 +151,19 @@ const PurchaseOrder: React.FC = () => {
     orderNumber: true,
     vendor: true,
     items: true,
-    quantity: true,
     total: true,
     status: true,
     paymentStatus: true,
-    payable: true,
+    paidAmount: true,
+    dueAmount: true,
     assignee: true,
-    date: true,
+    createdAt: true,
     actions: true
   });
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [selectedOrder, setSelectedOrder] = useState<PurchaseOrder | null>(null);
   const [paymentAmount, setPaymentAmount] = useState(0);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchVendors();
@@ -204,9 +214,7 @@ const PurchaseOrder: React.FC = () => {
       pendingOrders: orders.filter(o => o.status === 'pending').length,
       completedOrders: orders.filter(o => o.status === 'completed').length,
       cancelledOrders: orders.filter(o => o.status === 'cancelled').length,
-      totalItems: orders.reduce((sum, order) => sum + order.items.length, 0),
-      totalValue: orders.reduce((sum, order) => 
-        sum + order.items.reduce((itemSum, item) => itemSum + ((item.quantity || 0) * (item.price || 0)), 0), 0)
+      totalItems: orders.reduce((sum, order) => sum + order.items.length, 0)
     };
     setStats(stats);
   };
@@ -234,84 +242,97 @@ const PurchaseOrder: React.FC = () => {
     e.preventDefault();
     setLoading(true);
     setError('');
-    setSuccess('');
-
-    // Validate required fields
-    if (!formData.vendorId) {
-      setError('Please select a vendor');
-      setLoading(false);
-      return;
-    }
-
-    if (!formData.assigneeId) {
-      setError('Please select an assignee');
-      setLoading(false);
-      return;
-    }
-
-    // Validate that all items have valid medicine IDs
-    const invalidItems = formData.items.filter(item => !item.medicineId);
-    if (invalidItems.length > 0) {
-      setError('Please select a medicine for all items');
-      setLoading(false);
-      return;
-    }
 
     try {
-      // Transform items to include medicine details
-      const transformedItems = formData.items.map(item => ({
-        medicineId: item.medicineId,
-        quantity: item.quantity
-      }));
+      // Validate required fields
+      if (!newOrder.vendorId) {
+        throw new Error('Please select a vendor');
+      }
 
+      if (newOrder.items.length === 0) {
+        throw new Error('Please add at least one item');
+      }
+
+      // Validate each item
+      for (const item of newOrder.items) {
+        if (!item.name) {
+          throw new Error('Item name is required');
+        }
+        if (!item.quantity || item.quantity <= 0) {
+          throw new Error('Item quantity must be greater than 0');
+        }
+        if (!item.price || item.price < 0) {
+          throw new Error('Item price must be greater than or equal to 0');
+        }
+        if (!item.category) {
+          throw new Error('Item category is required');
+        }
+        if (!item.manufacturer) {
+          throw new Error('Item manufacturer is required');
+        }
+      }
+
+      // Create the order
       const response = await axios.post(
         'http://localhost:5000/api/purchase-orders',
-        {
-          vendorId: formData.vendorId,
-          items: transformedItems,
-          assigneeId: formData.assigneeId
-        },
+        newOrder,
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Update the orders state with the new order
-      setOrders(prevOrders => [...prevOrders, response.data]);
-      
-      setSuccess('Purchase order created successfully!');
-      setShowForm(false);
-      setFormData({
+      // Reset form and refresh orders
+      setNewOrder({
         vendorId: '',
-        items: [{ medicineId: '', quantity: 1 }],
+        items: [],
         assigneeId: ''
       });
+      fetchOrders();
+      setSuccess('Purchase order created successfully');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err: any) {
-      console.error('Error creating purchase order:', err);
-      setError(err.response?.data?.message || 'Failed to create purchase order. Please try again.');
+      setError(err.response?.data?.message || err.message || 'Failed to create purchase order');
     } finally {
       setLoading(false);
     }
   };
 
   const addItem = () => {
-    setFormData(prev => ({
+    setNewOrder(prev => ({
       ...prev,
-      items: [...prev.items, { medicineId: '', quantity: 1 }]
+      items: [
+        ...prev.items,
+        {
+          name: '',
+          description: '',
+          category: '',
+          manufacturer: '',
+          batchNumber: '',
+          quantity: 1,
+          price: 0,
+          priceUnit: 'piece',
+          unitsPerPackage: 1,
+          storage: 'cold',
+          requiresPrescription: false
+        }
+      ]
     }));
   };
 
   const removeItem = (index: number) => {
-    setFormData(prev => ({
+    setNewOrder(prev => ({
       ...prev,
       items: prev.items.filter((_, i) => i !== index)
     }));
   };
 
-  const handleItemChange = (index: number, field: 'medicineId' | 'quantity', value: string | number) => {
-    setFormData(prev => ({
+  const handleItemChange = (index: number, field: keyof PurchaseOrderItem, value: any) => {
+    const updatedItems = [...newOrder.items];
+    updatedItems[index] = {
+      ...updatedItems[index],
+      [field]: value
+    };
+    setNewOrder(prev => ({
       ...prev,
-      items: prev.items.map((item, i) => 
-        i === index ? { ...item, [field]: value } : item
-      )
+      items: updatedItems
     }));
   };
 
@@ -401,7 +422,7 @@ const PurchaseOrder: React.FC = () => {
       
       const newUser = response.data;
       setUsers(prev => [...prev, newUser]);
-      setFormData(prev => ({ ...prev, assigneeId: newUser._id }));
+      setNewOrder(prev => ({ ...prev, assigneeId: newUser._id }));
       setNewAssignee({
         username: '',
         fullName: '',
@@ -458,7 +479,7 @@ const PurchaseOrder: React.FC = () => {
         (order.assignee?.username?.toLowerCase() || '').includes(searchLower) ||
         (order.orderNumber?.toLowerCase() || '').includes(searchLower) ||
         order.items.some(item => 
-          (item.medicineId?.name?.toLowerCase() || '').includes(searchLower)
+          (item.name?.toLowerCase() || '').includes(searchLower)
         )
       );
     }
@@ -505,70 +526,65 @@ const PurchaseOrder: React.FC = () => {
 
     const selectedOrdersData = orders.filter(order => selectedOrders.includes(order._id));
     const printWindow = window.open('', '_blank');
-    if (printWindow) {
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Purchase Orders</title>
-            <style>
-              body { font-family: Arial, sans-serif; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
-              th { background-color: #f2f2f2; }
-              .header { text-align: center; margin-bottom: 20px; }
-              .header h1 { margin: 0; font-size: 24px; }
-              .header p { margin: 5px 0; color: #666; }
-              .order-info { margin-bottom: 20px; }
-              .order-info p { margin: 5px 0; }
-            </style>
-          </head>
-          <body>
-            <div class="header">
-              <h1>Shyama Pharmacy</h1>
-              <p>Mahabir Road, Birgunj - 10</p>
-              <p>Phone: +91 9845099594 | Email: info@shyamapharmacy.com</p>
-            </div>
-            ${selectedOrdersData.map(order => `
-              <div style="page-break-after: always;">
-                <div class="order-info">
-                  <h2>Order #${order.orderNumber}</h2>
-                  <p><strong>Vendor:</strong> ${order.vendorId.name}</p>
-                  <p><strong>Assigned To:</strong> ${order.assignee?.username || 'Unassigned'}</p>
-                  <p><strong>Date:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
-                  <p><strong>Status:</strong> ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}</p>
-                </div>
-                <table>
-                  <thead>
-                    <tr>
-                      <th>Medicine</th>
-                      <th>Quantity</th>
-                      <th>Price</th>
-                      <th>Total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    ${order.items.map(item => `
-                      <tr>
-                        <td>${item.medicineId.name}</td>
-                        <td>${item.quantity}</td>
-                        <td>₹${(item.price || 0).toFixed(2)}</td>
-                        <td>₹${((item.quantity || 0) * (item.price || 0)).toFixed(2)}</td>
-                      </tr>
-                    `).join('')}
-                    <tr>
-                      <td colspan="3"><strong>Total Amount</strong></td>
-                      <td><strong>₹${(order.totalAmount || 0).toFixed(2)}</strong></td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            `).join('')}
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.print();
+    
+    if (!printWindow) {
+      alert('Failed to open print window. Please check your browser settings.');
+      return;
     }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>Purchase Orders</title>
+          <style>
+            body { font-family: Arial, sans-serif; }
+            .order-info { margin-bottom: 20px; }
+            table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+            th { background-color: #f5f5f5; }
+          </style>
+        </head>
+        <body>
+          ${selectedOrdersData.map(order => `
+            <div style="page-break-after: always;">
+              <div class="order-info">
+                <h2>Order #${order.orderNumber}</h2>
+                <p><strong>Vendor:</strong> ${order.vendorId.name}</p>
+                <p><strong>Assigned To:</strong> ${order.assignee?.username || 'Unassigned'}</p>
+                <p><strong>Date:</strong> ${new Date(order.createdAt).toLocaleDateString()}</p>
+                <p><strong>Status:</strong> ${order.status.charAt(0).toUpperCase() + order.status.slice(1)}</p>
+              </div>
+              <table>
+                <thead>
+                  <tr>
+                    <th>Medicine</th>
+                    <th>Quantity</th>
+                    <th>Price per Piece</th>
+                    <th>Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${order.items.map(item => `
+                    <tr>
+                      <td>${item.name}</td>
+                      <td>${item.quantity}</td>
+                      <td>₹${(item.price || 0).toFixed(2)}</td>
+                      <td>₹${((item.quantity || 0) * (item.price || 0)).toFixed(2)}</td>
+                    </tr>
+                  `).join('')}
+                  <tr>
+                    <td colspan="3"><strong>Total Amount</strong></td>
+                    <td><strong>₹${order.items.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}</strong></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          `).join('')}
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+    printWindow.print();
   };
 
   const handleArchiveOrder = async (orderId: string) => {
@@ -624,12 +640,28 @@ const PurchaseOrder: React.FC = () => {
 
   const handlePaymentStatusChange = async (orderId: string, newStatus: 'PAID' | 'PARTIAL' | 'DUE', paidAmount?: number) => {
     try {
+      const order = orders.find(o => o._id === orderId);
+      if (!order) return;
+
+      const totalAmount = order.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+      const newPaymentStatus = paidAmount && paidAmount >= totalAmount ? 'PAID' : 
+                              paidAmount && paidAmount > 0 ? 'PARTIAL' : 'DUE';
+
       await axios.patch(
         `http://localhost:5000/api/purchase-orders/${orderId}/payment`,
-        { paymentStatus: newStatus, paidAmount },
+        {
+          paymentStatus: newPaymentStatus,
+          paidAmount: paidAmount || 0
+        },
         { headers: { Authorization: `Bearer ${token}` } }
       );
-      fetchOrders();
+
+      // Update local state
+      setOrders(orders.map(order => 
+        order._id === orderId 
+          ? { ...order, paymentStatus: newPaymentStatus, paidAmount: paidAmount || 0 }
+          : order
+      ));
     } catch (err) {
       console.error('Error updating payment status:', err);
       setError('Failed to update payment status');
@@ -640,24 +672,33 @@ const PurchaseOrder: React.FC = () => {
     if (!selectedOrder) return;
     
     try {
-      const newStatus = paymentAmount >= selectedOrder.totalAmount ? 'PAID' : 'PARTIAL';
+      const totalAmount = selectedOrder.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+      const newStatus = paymentAmount >= totalAmount ? 'PAID' : paymentAmount > 0 ? 'PARTIAL' : 'DUE';
       await handlePaymentStatusChange(selectedOrder._id, newStatus, paymentAmount);
       setShowPaymentModal(false);
       setSelectedOrder(null);
       setPaymentAmount(0);
+      setSuccess('Payment updated successfully');
+      setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
       console.error('Error submitting payment:', err);
       setError('Failed to submit payment');
     }
   };
 
-  if (!isAdmin && user?.role !== 'VIEWER') {
+  if (!canAccessPurchaseOrders(user)) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gray-50">
         <div className="max-w-md w-full p-6 bg-white rounded-lg shadow-lg">
           <div className="text-center">
             <h2 className="text-xl font-bold text-gray-900">Access Denied</h2>
             <p className="mt-2 text-gray-600">You don't have permission to access this page.</p>
+            <button 
+              onClick={() => navigate('/')}
+              className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700"
+            >
+              Return to Dashboard
+            </button>
           </div>
         </div>
       </div>
@@ -666,6 +707,35 @@ const PurchaseOrder: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
+      {/* Banner */}
+      <div className="bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+          <div className="flex flex-col md:flex-row justify-between items-center">
+            <div className="mb-4 md:mb-0">
+              <h1 className="text-3xl font-bold">Shyama Pharmacy</h1>
+              <p className="mt-1 text-indigo-100">Your health is our priority</p>
+            </div>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => navigate(-1)}
+                className="flex items-center text-white hover:text-indigo-100"
+              >
+                <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+                </svg>
+                Back
+              </button>
+              <Link to="/dashboard" className="text-white hover:text-indigo-100 flex items-center">
+                <svg className="h-5 w-5 mr-2" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+                </svg>
+                Dashboard
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Dashboard Stats */}
         <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4 mb-8">
@@ -785,7 +855,7 @@ const PurchaseOrder: React.FC = () => {
 
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold text-gray-900">Purchase Orders</h1>
-          {isAdmin && (
+          {canEditData(user) && (
             <button
               onClick={() => setShowForm(true)}
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
@@ -808,7 +878,7 @@ const PurchaseOrder: React.FC = () => {
           </div>
         )}
 
-        {showForm && isAdmin && (
+        {showForm && canEditData(user) && (
           <div className="bg-white shadow-lg rounded-lg p-8 mb-8 border border-gray-200">
             <div className="flex items-center justify-between mb-6">
               <h2 className="text-xl font-semibold text-gray-900">Create New Purchase Order</h2>
@@ -822,194 +892,187 @@ const PurchaseOrder: React.FC = () => {
                 </svg>
               </button>
             </div>
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Vendor</label>
-                  <select
-                    value={formData.vendorId}
-                    onChange={(e) => setFormData(prev => ({ ...prev, vendorId: e.target.value }))}
-                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                    required
-                  >
-                    <option value="">Select a vendor</option>
-                    {vendors.map(vendor => (
-                      <option key={vendor._id} value={vendor._id}>{vendor.name}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Assignee</label>
-                  <div className="mt-1 space-y-2">
-                    <div className="flex items-center space-x-3">
-                      <button
-                        type="button"
-                        onClick={() => setAssigneeMode('select')}
-                        className={`px-3 py-1 text-sm rounded-md ${
-                          assigneeMode === 'select'
-                            ? 'bg-indigo-100 text-indigo-700'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Select Existing
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setAssigneeMode('create')}
-                        className={`px-3 py-1 text-sm rounded-md ${
-                          assigneeMode === 'create'
-                            ? 'bg-indigo-100 text-indigo-700'
-                            : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                        }`}
-                      >
-                        Create New
-                      </button>
-                    </div>
-
-                    {assigneeMode === 'select' ? (
-                      <select
-                        value={formData.assigneeId}
-                        onChange={(e) => setFormData(prev => ({ ...prev, assigneeId: e.target.value }))}
-                        className="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                      >
-                        <option value="">Select an assignee</option>
-                        {users.map(user => (
-                          <option key={user._id} value={user._id}>{user.username}</option>
-                        ))}
-                      </select>
-                    ) : (
-                      <div className="space-y-3">
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Username</label>
-                          <input
-                            type="text"
-                            value={newAssignee.username}
-                            onChange={(e) => setNewAssignee(prev => ({ ...prev, username: e.target.value }))}
-                            placeholder="Enter username"
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Full Name</label>
-                          <input
-                            type="text"
-                            value={newAssignee.fullName}
-                            onChange={(e) => setNewAssignee(prev => ({ ...prev, fullName: e.target.value }))}
-                            placeholder="Enter full name"
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-gray-700">Phone Number</label>
-                          <input
-                            type="tel"
-                            value={newAssignee.phoneNumber}
-                            onChange={(e) => setNewAssignee(prev => ({ ...prev, phoneNumber: e.target.value }))}
-                            placeholder="Enter phone number"
-                            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
-                          />
-                        </div>
-                        {assigneeError && (
-                          <p className="text-sm text-red-600">{assigneeError}</p>
-                        )}
-                        <button
-                          type="button"
-                          onClick={createNewAssignee}
-                          disabled={!newAssignee.username.trim() || !newAssignee.fullName.trim() || !newAssignee.phoneNumber.trim() || isCreatingAssignee}
-                          className="w-full inline-flex items-center justify-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
-                        >
-                          {isCreatingAssignee ? (
-                            <>
-                              <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" fill="none" viewBox="0 0 24 24">
-                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                              </svg>
-                              Creating...
-                            </>
-                          ) : (
-                            'Create Assignee'
-                          )}
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Vendor</label>
+                <select
+                  value={newOrder.vendorId}
+                  onChange={(e) => setNewOrder(prev => ({ ...prev, vendorId: e.target.value }))}
+                  className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                  required
+                >
+                  <option value="">Select a vendor</option>
+                  {vendors.map(vendor => (
+                    <option key={vendor._id} value={vendor._id}>
+                      {vendor.name}
+                    </option>
+                  ))}
+                </select>
               </div>
 
               <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-lg font-medium text-gray-900">Order Items</h3>
+                <div className="flex justify-between items-center">
+                  <h3 className="text-lg font-medium text-gray-900">Items</h3>
                   <button
                     type="button"
                     onClick={addItem}
-                    className="inline-flex items-center px-3 py-1 border border-transparent text-sm font-medium rounded-md text-indigo-600 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
+                    className="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-indigo-700 bg-indigo-100 hover:bg-indigo-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                   >
-                    <svg className="-ml-1 mr-1 h-5 w-5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
                     Add Item
                   </button>
                 </div>
 
-                {formData.items.map((item, index) => (
-                  <div key={index} className="bg-gray-50 p-4 rounded-lg">
-                    <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-                      <div className="col-span-2">
-                        <label className="block text-sm font-medium text-gray-700">Medicine</label>
-                        <select
-                          value={item.medicineId}
-                          onChange={(e) => handleItemChange(index, 'medicineId', e.target.value)}
+                {newOrder.items.map((item, index) => (
+                  <div key={index} className="border rounded-lg p-4 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h4 className="text-md font-medium text-gray-900">Item {index + 1}</h4>
+                      <button
+                        type="button"
+                        onClick={() => removeItem(index)}
+                        className="text-red-600 hover:text-red-900"
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Name</label>
+                        <input
+                          type="text"
+                          value={item.name}
+                          onChange={(e) => handleItemChange(index, 'name', e.target.value)}
                           className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
                           required
-                        >
-                          <option value="">Select a medicine</option>
-                          {medicines.map(medicine => (
-                            <option key={medicine._id} value={medicine._id}>
-                              {medicine.name}{medicine.unit ? ` (${medicine.unit})` : ''}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Description</label>
+                        <input
+                          type="text"
+                          value={item.description}
+                          onChange={(e) => handleItemChange(index, 'description', e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Category</label>
+                        <input
+                          type="text"
+                          value={item.category}
+                          onChange={(e) => handleItemChange(index, 'category', e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Manufacturer</label>
+                        <input
+                          type="text"
+                          value={item.manufacturer}
+                          onChange={(e) => handleItemChange(index, 'manufacturer', e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Batch Number</label>
+                        <input
+                          type="text"
+                          value={item.batchNumber}
+                          onChange={(e) => handleItemChange(index, 'batchNumber', e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        />
+                      </div>
+
                       <div>
                         <label className="block text-sm font-medium text-gray-700">Quantity</label>
-                        <div className="mt-1 flex rounded-md shadow-sm">
-                          <input
-                            type="number"
-                            min="1"
-                            value={item.quantity}
-                            onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value))}
-                            className="flex-1 min-w-0 block w-full rounded-md border-gray-300 focus:border-indigo-500 focus:ring-indigo-500"
-                            required
-                          />
-                          {index > 0 && (
-                            <button
-                              type="button"
-                              onClick={() => removeItem(index)}
-                              className="ml-3 inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-red-700 bg-red-100 hover:bg-red-200 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500"
-                            >
-                              Remove
-                            </button>
-                          )}
-                        </div>
+                        <input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => handleItemChange(index, 'quantity', parseInt(e.target.value))}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          min="1"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Price per Piece</label>
+                        <input
+                          type="number"
+                          value={item.price}
+                          onChange={(e) => handleItemChange(index, 'price', parseFloat(e.target.value))}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                          min="0"
+                          step="0.01"
+                          required
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Price Unit</label>
+                        <select
+                          value={item.priceUnit}
+                          onChange={(e) => handleItemChange(index, 'priceUnit', e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                          <option value="piece">Piece</option>
+                          <option value="box">Box</option>
+                          <option value="strip">Strip</option>
+                          <option value="bottle">Bottle</option>
+                          <option value="pack">Pack</option>
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Units per Package</label>
+                        <input
+                          type="number"
+                          value={item.unitsPerPackage}
+                          onChange={(e) => handleItemChange(index, 'unitsPerPackage', parseInt(e.target.value))}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-sm font-medium text-gray-700">Storage Requirements</label>
+                        <select
+                          value={item.storage}
+                          onChange={(e) => handleItemChange(index, 'storage', e.target.value)}
+                          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500"
+                        >
+                          <option value="cold">Cold</option>
+                          <option value="extreme_cold">Extreme Cold</option>
+                          <option value="hot">Hot</option>
+                          <option value="extreme_hot">Extreme Hot</option>
+                        </select>
+                      </div>
+
+                      <div className="flex items-center">
+                        <input
+                          type="checkbox"
+                          checked={item.requiresPrescription}
+                          onChange={(e) => handleItemChange(index, 'requiresPrescription', e.target.checked)}
+                          className="h-4 w-4 text-indigo-600 focus:ring-indigo-500 border-gray-300 rounded"
+                        />
+                        <label className="ml-2 block text-sm text-gray-900">
+                          Requires Prescription
+                        </label>
                       </div>
                     </div>
                   </div>
                 ))}
               </div>
 
-              <div className="flex justify-end space-x-3 pt-4 border-t border-gray-200">
-                <button
-                  type="button"
-                  onClick={() => setShowForm(false)}
-                  className="inline-flex items-center px-4 py-2 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
-                >
-                  Cancel
-                </button>
+              <div className="flex justify-end">
                 <button
                   type="submit"
-                  disabled={loading}
-                  className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50"
+                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md shadow-sm text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500"
                 >
                   Create Order
                 </button>
@@ -1041,6 +1104,14 @@ const PurchaseOrder: React.FC = () => {
         {/* Action Buttons */}
         <div className="mb-6 flex justify-between items-center">
           <div className="flex space-x-4">
+            {canEditData(user) && (
+              <button
+                onClick={() => setShowForm(true)}
+                className="bg-indigo-600 text-white px-4 py-2 rounded-md hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                Create Purchase Order
+              </button>
+            )}
             <button
               onClick={handlePrintOrders}
               className="bg-green-600 text-white px-4 py-2 rounded-md hover:bg-green-700"
@@ -1085,11 +1156,6 @@ const PurchaseOrder: React.FC = () => {
                       Items
                     </th>
                   )}
-                  {columnVisibility.quantity && (
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Quantity
-                    </th>
-                  )}
                   {columnVisibility.total && (
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Total
@@ -1100,24 +1166,29 @@ const PurchaseOrder: React.FC = () => {
                       Status
                     </th>
                   )}
-                  {columnVisibility.assignee && (
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Assigned To
-                    </th>
-                  )}
-                  {columnVisibility.date && (
-                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Date
-                    </th>
-                  )}
                   {columnVisibility.paymentStatus && (
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                       Payment Status
                     </th>
                   )}
-                  {columnVisibility.payable && (
+                  {columnVisibility.paidAmount && (
                     <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                      Payable Amount
+                      Paid Amount
+                    </th>
+                  )}
+                  {columnVisibility.dueAmount && (
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Due Amount
+                    </th>
+                  )}
+                  {columnVisibility.assignee && (
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Assigned To
+                    </th>
+                  )}
+                  {columnVisibility.createdAt && (
+                    <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
                     </th>
                   )}
                   {columnVisibility.actions && (
@@ -1155,18 +1226,7 @@ const PurchaseOrder: React.FC = () => {
                         <div className="space-y-1">
                           {order.items.map((item, index) => (
                             <div key={index} className="flex items-center space-x-2">
-                              <span className="text-gray-900">{item.medicineId.name}</span>
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                    )}
-                    {columnVisibility.quantity && (
-                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                        <div className="space-y-1">
-                          {order.items.map((item, index) => (
-                            <div key={index} className="text-gray-900">
-                              {item.quantity}
+                              <span className="text-gray-900">{item.name}</span>
                             </div>
                           ))}
                         </div>
@@ -1177,12 +1237,9 @@ const PurchaseOrder: React.FC = () => {
                         <div className="space-y-1">
                           {order.items.map((item, index) => (
                             <div key={index} className="text-gray-900">
-                              ₹{((item.quantity || 0) * (item.price || 0)).toFixed(2)} (₹{(item.price || 0).toFixed(2)} per piece)
+                              {item.quantity} x {item.name} (₹{(item.price || 0).toFixed(2)} per piece)
                             </div>
                           ))}
-                          <div className="font-semibold border-t pt-1">
-                            Total: ₹{(order.totalAmount || 0).toFixed(2)}
-                          </div>
                         </div>
                       </td>
                     )}
@@ -1200,6 +1257,39 @@ const PurchaseOrder: React.FC = () => {
                         </select>
                       </td>
                     )}
+                    {columnVisibility.paymentStatus && (
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800' :
+                          order.paymentStatus === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
+                          'bg-red-100 text-red-800'
+                        }`}>
+                          {order.paymentStatus}
+                        </span>
+                        {order.paymentStatus !== 'PAID' && (
+                          <button
+                            onClick={() => {
+                              setSelectedOrder(order);
+                              setPaymentAmount(order.items.reduce((sum, item) => sum + (item.quantity * item.price), 0) - order.paidAmount);
+                              setShowPaymentModal(true);
+                            }}
+                            className="ml-2 text-indigo-600 hover:text-indigo-900"
+                          >
+                            Update Payment
+                          </button>
+                        )}
+                      </td>
+                    )}
+                    {columnVisibility.paidAmount && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {order.paidAmount}
+                      </td>
+                    )}
+                    {columnVisibility.dueAmount && (
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {order.items.reduce((sum, item) => sum + (item.quantity * item.price), 0) - order.paidAmount}
+                      </td>
+                    )}
                     {columnVisibility.assignee && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         <select
@@ -1214,43 +1304,9 @@ const PurchaseOrder: React.FC = () => {
                         </select>
                       </td>
                     )}
-                    {columnVisibility.date && (
+                    {columnVisibility.createdAt && (
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                         {new Date(order.createdAt).toLocaleDateString()}
-                      </td>
-                    )}
-                    {columnVisibility.paymentStatus && (
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
-                          order.paymentStatus === 'PAID' ? 'bg-green-100 text-green-800' :
-                          order.paymentStatus === 'PARTIAL' ? 'bg-yellow-100 text-yellow-800' :
-                          'bg-red-100 text-red-800'
-                        }`}>
-                          {order.paymentStatus}
-                        </span>
-                        {order.paymentStatus !== 'PAID' && (
-                          <button
-                            onClick={() => {
-                              setSelectedOrder(order);
-                              setPaymentAmount(order.totalAmount - order.paidAmount);
-                              setShowPaymentModal(true);
-                            }}
-                            className="ml-2 text-indigo-600 hover:text-indigo-900"
-                          >
-                            Update Payment
-                          </button>
-                        )}
-                      </td>
-                    )}
-                    {columnVisibility.payable && (
-                      <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`text-sm font-medium ${
-                          order.paymentStatus === 'PAID' ? 'text-green-600' :
-                          order.paymentStatus === 'PARTIAL' ? 'text-yellow-600' :
-                          'text-red-600'
-                        }`}>
-                          ₹{(order.totalAmount - order.paidAmount).toFixed(2)}
-                        </span>
                       </td>
                     )}
                     {columnVisibility.actions && (
@@ -1326,13 +1382,10 @@ const PurchaseOrder: React.FC = () => {
                       <div className="flex flex-col space-y-1">
                         {order.items.map((item, index) => (
                           <div key={index} className="text-sm">
-                            {item.quantity} x {item.medicineId.name}
+                            {item.quantity} x {item.name} (₹{(item.price || 0).toFixed(2)} per piece)
                           </div>
                         ))}
                       </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
-                      ₹{(order.totalAmount || 0).toFixed(2)}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
                       {order.assignee?.username || 'Unassigned'}
@@ -1368,25 +1421,37 @@ const PurchaseOrder: React.FC = () => {
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Total Amount</label>
                   <div className="mt-1 text-lg font-semibold text-gray-900">
-                    ₹{selectedOrder.totalAmount.toFixed(2)}
+                    ₹{selectedOrder.items.reduce((sum, item) => sum + (item.quantity * item.price), 0).toFixed(2)}
                   </div>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Amount Paid</label>
-                  <div className="mt-1 text-lg font-semibold text-gray-900">
-                    ₹{selectedOrder.paidAmount.toFixed(2)}
-                  </div>
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700">Amount to Pay</label>
                   <input
                     type="number"
                     value={paymentAmount}
                     onChange={(e) => setPaymentAmount(parseFloat(e.target.value))}
                     min="0"
-                    max={selectedOrder.totalAmount - selectedOrder.paidAmount}
+                    max={selectedOrder.items.reduce((sum, item) => sum + (item.quantity * item.price), 0)}
                     className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
                   />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Payment Status</label>
+                  <div className="mt-1 text-lg font-semibold">
+                    <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                      paymentAmount >= selectedOrder.items.reduce((sum, item) => sum + (item.quantity * item.price), 0) 
+                        ? 'bg-green-100 text-green-800'
+                        : paymentAmount > 0 
+                          ? 'bg-yellow-100 text-yellow-800'
+                          : 'bg-red-100 text-red-800'
+                    }`}>
+                      {paymentAmount >= selectedOrder.items.reduce((sum, item) => sum + (item.quantity * item.price), 0)
+                        ? 'PAID'
+                        : paymentAmount > 0
+                          ? 'PARTIAL'
+                          : 'DUE'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="mt-6 flex justify-end space-x-3">

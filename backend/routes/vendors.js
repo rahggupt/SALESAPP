@@ -15,6 +15,36 @@ router.get('/', authenticateToken, async (req, res) => {
     }
 });
 
+// Get vendor summary
+router.get('/summary', authenticateToken, async (req, res) => {
+    try {
+        const totalVendors = await Vendor.countDocuments();
+        const activeVendors = await Vendor.countDocuments({ isActive: true });
+        
+        // Get vendors with dues
+        const vendorsWithDues = await VendorTransaction.aggregate([
+            {
+                $match: { dueAmount: { $gt: 0 } }
+            },
+            {
+                $group: {
+                    _id: '$vendor',
+                    totalDue: { $sum: '$dueAmount' }
+                }
+            }
+        ]);
+
+        res.json({
+            total: totalVendors,
+            active: activeVendors,
+            withDues: vendorsWithDues.length
+        });
+    } catch (error) {
+        console.error('Error getting vendor summary:', error);
+        res.status(500).json({ message: 'Error getting vendor summary' });
+    }
+});
+
 // Get vendor count for dashboard
 router.get('/stats/count', authenticateToken, async (req, res) => {
     try {
@@ -47,6 +77,19 @@ router.get('/:id/transactions', authenticateToken, async (req, res) => {
         res.json(transactions);
     } catch (error) {
         res.status(500).json({ message: 'Error fetching transactions' });
+    }
+});
+
+// Get vendor by ID
+router.get('/:id', authenticateToken, async (req, res) => {
+    try {
+        const vendor = await Vendor.findById(req.params.id);
+        if (!vendor) {
+            return res.status(404).json({ message: 'Vendor not found' });
+        }
+        res.json(vendor);
+    } catch (error) {
+        res.status(500).json({ message: 'Error fetching vendor' });
     }
 });
 
@@ -86,19 +129,6 @@ router.put('/transactions/:id', authenticateToken, async (req, res) => {
         res.json(transaction);
     } catch (error) {
         res.status(400).json({ message: error.message });
-    }
-});
-
-// Get vendor by ID
-router.get('/:id', authenticateToken, async (req, res) => {
-    try {
-        const vendor = await Vendor.findById(req.params.id);
-        if (!vendor) {
-            return res.status(404).json({ message: 'Vendor not found' });
-        }
-        res.json(vendor);
-    } catch (error) {
-        res.status(500).json({ message: 'Error fetching vendor' });
     }
 });
 

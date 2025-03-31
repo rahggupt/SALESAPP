@@ -1,7 +1,6 @@
 import express from 'express';
 import PurchaseOrder from '../models/PurchaseOrder';
 import { authenticateToken } from '../middleware/auth';
-import Medicine from '../models/Medicine';
 
 const router = express.Router();
 
@@ -10,7 +9,6 @@ router.get('/', authenticateToken, async (req: any, res) => {
   try {
     const purchaseOrders = await PurchaseOrder.find()
       .populate('vendorId', 'name')
-      .populate('items.medicineId', 'name unit')
       .populate('assignee', 'username')
       .sort({ createdAt: -1 });
     res.json(purchaseOrders);
@@ -45,47 +43,22 @@ router.post('/', authenticateToken, async (req: any, res) => {
 
     const orderNumber = `PO-${dateStr}-${sequence.toString().padStart(4, '0')}`;
 
-    // Get medicine prices and calculate total
-    const itemsWithPrices = await Promise.all(items.map(async (item) => {
-      const medicine = await Medicine.findById(item.medicineId);
-      if (!medicine) {
-        throw new Error(`Medicine not found: ${item.medicineId}`);
-      }
-      
-      // Calculate price per piece by dividing total price by units per package
-      const pricePerPiece = medicine.price / medicine.unitsPerPackage;
-      
-      return {
-        medicineId: item.medicineId,
-        quantity: item.quantity,
-        price: pricePerPiece
-      };
-    }));
-
-    // Calculate total amount by multiplying quantity with price per piece for each item
-    const totalAmount = itemsWithPrices.reduce((sum, item) => {
-      const itemTotal = item.quantity * item.price;
-      return sum + itemTotal;
-    }, 0);
-
     // Create new purchase order
     const purchaseOrder = new PurchaseOrder({
       orderNumber,
       vendorId,
-      items: itemsWithPrices,
+      items,
       assignee: assigneeId,
       status: 'pending',
-      totalAmount,
       paymentStatus: paymentStatus || 'DUE',
       paidAmount: paidAmount || 0
     });
 
     await purchaseOrder.save();
 
-    // Populate the response with vendor and medicine details
+    // Populate the response with vendor and assignee details
     const populatedOrder = await PurchaseOrder.findById(purchaseOrder._id)
       .populate('vendorId', 'name')
-      .populate('items.medicineId', 'name unit')
       .populate('assignee', 'username');
 
     res.status(201).json(populatedOrder);
@@ -110,7 +83,6 @@ router.patch('/:id/status', authenticateToken, async (req: any, res) => {
       { status },
       { new: true }
     ).populate('vendorId', 'name')
-     .populate('items.medicineId', 'name unit')
      .populate('assignee', 'username');
 
     if (!purchaseOrder) {
@@ -139,7 +111,6 @@ router.patch('/:id/payment', authenticateToken, async (req: any, res) => {
       { paymentStatus, paidAmount },
       { new: true }
     ).populate('vendorId', 'name')
-     .populate('items.medicineId', 'name unit')
      .populate('assignee', 'username');
 
     if (!purchaseOrder) {

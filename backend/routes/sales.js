@@ -6,6 +6,7 @@ const fs = require('fs');
 const { authenticateToken } = require('../middleware/auth');
 const Sale = require('../models/Sale');
 const Medicine = require('../models/Medicine');
+const Customer = require('../models/Customer');
 const mongoose = require('mongoose');
 
 // Set up multer storage for prescription images
@@ -320,7 +321,7 @@ router.get('/credit', authenticateToken, async (req, res) => {
         if (startDate && endDate) {
             query.date = {
                 $gte: new Date(startDate),
-                $lte: new Date(endDate)
+                $lte: new Date(new Date(endDate).setHours(23, 59, 59, 999))
             };
         }
 
@@ -329,10 +330,11 @@ router.get('/credit', authenticateToken, async (req, res) => {
         }
 
         const sales = await Sale.find(query)
-            .populate('medicines.medicine')
+            .populate('items.medicineId')
             .sort({ date: -1 });
         res.json(sales);
     } catch (error) {
+        console.error('Error fetching credit sales:', error);
         res.status(500).json({ message: 'Error fetching credit sales' });
     }
 });
@@ -517,6 +519,71 @@ router.get('/creditors', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error fetching creditors:', err);
     res.status(500).json({ message: 'Error fetching creditors' });
+  }
+});
+
+// @route   GET api/sales/payment/summary
+// @desc    Get payment summary for all sales
+// @access  Private (Admin and Viewer only)
+router.get('/payment/summary', authenticateToken, async (req, res) => {
+  try {
+    // Check if user has permission
+    if (!['ADMIN', 'VIEWER'].includes(req.user.role)) {
+      return res.status(403).json({ message: 'Access denied. Admin or Viewer only.' });
+    }
+
+    let query = {};
+    // If not admin, only show sales created by the user
+    if (req.user.role !== 'ADMIN') {
+      query.createdBy = req.user.userId;
+    }
+
+    const sales = await Sale.find(query)
+      .populate('createdBy', 'username')
+      .lean();
+
+    // Calculate totals
+    const summary = {
+      totalAmount: 0,
+      paidAmount: 0,
+      totalDueAmount: 0,
+      partialAmount: 0,
+      customerTotals: {}
+    };
+
+    sales.forEach(sale => {
+      const total = sale.finalAmount || sale.totalAmount;
+      const paid = sale.paidAmount || 0;
+      const due = sale.dueAmount || (total - paid);
+
+      summary.totalAmount += total;
+      summary.paidAmount += paid;
+      summary.totalDueAmount += due;
+
+      if (paid > 0 && paid < total) {
+        summary.partialAmount += paid;
+      }
+
+      // Group by customer
+      const customerName = sale.customer || 'Unknown Customer';
+      if (!summary.customerTotals[customerName]) {
+        summary.customerTotals[customerName] = {
+          name: customerName,
+          totalDue: 0
+        };
+      }
+      summary.customerTotals[customerName].totalDue += due;
+    });
+
+    // Convert customer totals to array and filter out those with no due amount
+    summary.customerTotals = Object.values(summary.customerTotals)
+      .filter(customer => customer.totalDue > 0)
+      .sort((a, b) => b.totalDue - a.totalDue);
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Error getting sales payment summary:', error);
+    res.status(500).json({ message: 'Error getting sales payment summary' });
   }
 });
 

@@ -97,10 +97,17 @@ const medicineSchema = new mongoose.Schema({
         required: true,
         min: 0
     },
+    purchaseCurrency: {
+        type: String,
+        required: true,
+        default: 'NPR',
+        enum: ['NPR', 'INR']
+    },
     paymentStatus: {
         type: String,
         enum: ['PAID', 'PARTIAL', 'DUE'],
-        required: true
+        required: true,
+        default: 'DUE'
     },
     paidAmount: {
         type: Number,
@@ -114,14 +121,33 @@ const medicineSchema = new mongoose.Schema({
         min: 0,
         default: 0
     },
+    lastPaymentDate: {
+        type: Date
+    },
+    paymentHistory: [{
+        amount: {
+            type: Number,
+            required: true
+        },
+        date: {
+            type: Date,
+            required: true,
+            default: Date.now
+        },
+        status: {
+            type: String,
+            required: true,
+            enum: ['PAID', 'PARTIAL']
+        }
+    }],
     createdAt: {
         type: Date,
         default: Date.now
     }
 }, {
     timestamps: true,
-    toJSON: { getters: true }, // Enable getters when converting to JSON
-    toObject: { getters: true } // Enable getters when converting to object
+    toJSON: { getters: true },
+    toObject: { getters: true }
 });
 
 // Remove the unique index on composition array
@@ -132,13 +158,42 @@ medicineSchema.pre('save', function(next) {
     if (this.paymentStatus === 'PAID') {
         this.paidAmount = this.purchasePrice;
         this.dueAmount = 0;
+        this.lastPaymentDate = new Date();
     } else if (this.paymentStatus === 'DUE') {
         this.paidAmount = 0;
         this.dueAmount = this.purchasePrice;
     } else if (this.paymentStatus === 'PARTIAL') {
         this.dueAmount = this.purchasePrice - this.paidAmount;
+        if (this.paidAmount > 0) {
+            this.lastPaymentDate = new Date();
+        }
     }
     next();
 });
+
+// Add method to update payment
+medicineSchema.methods.updatePayment = async function(amount, status) {
+    this.paidAmount = amount;
+    this.paymentStatus = status;
+    this.dueAmount = this.purchasePrice - amount;
+    
+    if (amount > 0) {
+        this.lastPaymentDate = new Date();
+        this.paymentHistory.push({
+            amount,
+            status,
+            date: new Date()
+        });
+    }
+    
+    return this.save();
+};
+
+// Add method to calculate profit margin
+medicineSchema.methods.calculateProfitMargin = function() {
+    const sellingPrice = this.price;
+    const purchasePrice = this.purchasePrice;
+    return ((sellingPrice - purchasePrice) / purchasePrice) * 100;
+};
 
 module.exports = mongoose.model('Medicine', medicineSchema); 

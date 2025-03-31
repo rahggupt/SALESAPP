@@ -3,6 +3,12 @@ import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
 import { Link } from 'react-router-dom';
 
+interface PaymentHistory {
+  amount: number;
+  date: string;
+  status: 'PAID' | 'PARTIAL';
+}
+
 interface Medicine {
   _id: string;
   name: string;
@@ -27,6 +33,8 @@ interface Medicine {
     _id: string;
     name: string;
   };
+  paymentHistory: PaymentHistory[];
+  lastPaymentDate: string;
 }
 
 interface MedicineResponse {
@@ -85,6 +93,11 @@ const MedicineList: React.FC = () => {
   });
   const [paymentAmount, setPaymentAmount] = useState<number>(0);
   const [paymentStatus, setPaymentStatus] = useState<'PAID' | 'PARTIAL' | 'DUE'>('DUE');
+  const [paymentHistory, setPaymentHistory] = useState<PaymentHistory[]>([]);
+  const [showPaymentHistory, setShowPaymentHistory] = useState<{ isOpen: boolean; medicine: Medicine | null }>({
+    isOpen: false,
+    medicine: null
+  });
 
   // Update the debounce effect to use a longer delay
   useEffect(() => {
@@ -283,6 +296,19 @@ const MedicineList: React.FC = () => {
     fetchVendorPayments();
   }, [token]);
 
+  const fetchPaymentHistory = async (medicineId: string) => {
+    try {
+      const response = await axios.get(
+        `http://localhost:5000/api/medicines/${medicineId}/payment-history`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setPaymentHistory(response.data.paymentHistory);
+    } catch (err) {
+      console.error('Error fetching payment history:', err);
+      setError('Failed to fetch payment history');
+    }
+  };
+
   const handlePaymentSubmit = async () => {
     if (!paymentModal.medicine) return;
 
@@ -296,8 +322,12 @@ const MedicineList: React.FC = () => {
         { headers: { Authorization: `Bearer ${token}` } }
       );
 
-      // Refresh medicines list
+      // Refresh medicines list and payment history
       fetchMedicines();
+      if (showPaymentHistory.isOpen && showPaymentHistory.medicine) {
+        fetchPaymentHistory(showPaymentHistory.medicine._id);
+      }
+
       setPaymentModal({ isOpen: false, medicine: null });
       setPaymentAmount(0);
       setPaymentStatus('DUE');
@@ -657,13 +687,26 @@ const MedicineList: React.FC = () => {
                             <div className="text-xs text-gray-500">
                               Due: NPR {medicine.dueAmount.toFixed(2)}
                             </div>
-                            {isAdmin && medicine.paymentStatus !== 'PAID' && (
-                              <button
-                                onClick={() => setPaymentModal({ isOpen: true, medicine })}
-                                className="mt-1 text-xs text-indigo-600 hover:text-indigo-900"
-                              >
-                                Update Payment
-                              </button>
+                            {isAdmin && (
+                              <div className="mt-1 space-x-2">
+                                {medicine.paymentStatus !== 'PAID' && (
+                                  <button
+                                    onClick={() => setPaymentModal({ isOpen: true, medicine })}
+                                    className="text-xs text-indigo-600 hover:text-indigo-900"
+                                  >
+                                    Update Payment
+                                  </button>
+                                )}
+                                <button
+                                  onClick={() => {
+                                    setShowPaymentHistory({ isOpen: true, medicine });
+                                    fetchPaymentHistory(medicine._id);
+                                  }}
+                                  className="text-xs text-gray-600 hover:text-gray-900"
+                                >
+                                  View History
+                                </button>
+                              </div>
                             )}
                           </div>
                         </td>
@@ -804,7 +847,7 @@ const MedicineList: React.FC = () => {
               
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Price ($)</label>
+                  <label className="block text-sm font-medium text-gray-700">Price (NPR)</label>
                   <input
                     type="number"
                     name="price"
@@ -842,7 +885,7 @@ const MedicineList: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
               <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Manufacturer</label>
@@ -868,7 +911,72 @@ const MedicineList: React.FC = () => {
                   />
                 </div>
               </div>
-              
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Price Unit</label>
+                  <select
+                    name="priceUnit"
+                    value={editMedicine.priceUnit}
+                    onChange={handleEditChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    required
+                  >
+                    <option value="piece">Piece</option>
+                    <option value="box">Box</option>
+                    <option value="strip">Strip</option>
+                    <option value="bottle">Bottle</option>
+                    <option value="pack">Pack</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Units per Package</label>
+                  <input
+                    type="number"
+                    name="unitsPerPackage"
+                    value={editMedicine.unitsPerPackage}
+                    onChange={handleEditChange}
+                    min="1"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    required
+                  />
+                  <p className="mt-1 text-xs text-gray-500">Number of pieces in one {editMedicine.priceUnit}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Purchase Price (NPR)</label>
+                  <input
+                    type="number"
+                    name="purchasePrice"
+                    value={editMedicine.purchasePrice}
+                    onChange={handleEditChange}
+                    step="0.01"
+                    min="0"
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Storage Requirements</label>
+                  <select
+                    name="storage"
+                    value={editMedicine.storage}
+                    onChange={handleEditChange}
+                    className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:ring-indigo-500 focus:border-indigo-500"
+                    required
+                  >
+                    <option value="cold">Cold</option>
+                    <option value="extreme_cold">Extreme Cold</option>
+                    <option value="hot">Hot</option>
+                    <option value="extreme_hot">Extreme Hot</option>
+                  </select>
+                </div>
+              </div>
+
               <div className="flex items-center">
                 <input
                   type="checkbox"
@@ -993,6 +1101,71 @@ const MedicineList: React.FC = () => {
               >
                 Update Payment
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Payment History Modal */}
+      {showPaymentHistory.isOpen && showPaymentHistory.medicine && (
+        <div className="fixed inset-0 bg-gray-500 bg-opacity-75 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg max-w-2xl w-full p-6">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-medium text-gray-900">Payment History</h3>
+              <button
+                onClick={() => setShowPaymentHistory({ isOpen: false, medicine: null })}
+                className="text-gray-400 hover:text-gray-500"
+              >
+                <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            
+            <div className="mb-4">
+              <h4 className="text-sm font-medium text-gray-700">Medicine Details</h4>
+              <p className="text-sm text-gray-900">{showPaymentHistory.medicine.name}</p>
+              <p className="text-sm text-gray-500">Vendor: {showPaymentHistory.medicine.vendor.name}</p>
+              <p className="text-sm text-gray-500">
+                Total Amount: NPR {showPaymentHistory.medicine.purchasePrice.toFixed(2)}
+              </p>
+            </div>
+
+            <div className="overflow-x-auto">
+              <table className="min-w-full divide-y divide-gray-200">
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Date
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Amount
+                    </th>
+                    <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-white divide-y divide-gray-200">
+                  {paymentHistory.map((payment, index) => (
+                    <tr key={index}>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        {new Date(payment.date).toLocaleDateString()}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-900">
+                        NPR {payment.amount.toFixed(2)}
+                      </td>
+                      <td className="px-6 py-4 whitespace-nowrap">
+                        <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full ${
+                          payment.status === 'PAID' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                        }`}>
+                          {payment.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

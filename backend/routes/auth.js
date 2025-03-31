@@ -8,15 +8,21 @@ const { authenticateToken } = require('../middleware/auth');
 // Login route
 router.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
-        console.log('Login attempt for username:', username);
+        const { email, password } = req.body;
+        console.log('Login attempt for email:', email);
         
-        const user = await User.findOne({ username });
+        const user = await User.findOne({ email });
         console.log('User found:', user ? 'Yes' : 'No');
 
         if (!user) {
             console.log('Login failed: User not found');
             return res.status(401).json({ message: 'Invalid credentials' });
+        }
+
+        // Check if user is active
+        if (!user.isActive) {
+            console.log('Login failed: User account is deactivated');
+            return res.status(401).json({ message: 'Account is deactivated' });
         }
 
         // Use the model's comparePassword method
@@ -28,45 +34,58 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ message: 'Invalid credentials' });
         }
 
+        // Update last login using findOneAndUpdate
+        await User.findOneAndUpdate(
+            { _id: user._id },
+            { $set: { lastLogin: new Date() } }
+        );
+
         const token = jwt.sign(
-            { userId: user._id, role: user.role },
+            { 
+                userId: user._id, 
+                role: user.role,
+                email: user.email
+            },
             process.env.JWT_SECRET || 'your-secret-key',
             { expiresIn: '24h' }
         );
 
-        console.log('Login successful for user:', username);
+        console.log('Login successful for user:', email);
         res.json({
             token,
             user: {
                 id: user._id,
-                username: user.username,
-                role: user.role
+                name: user.name,
+                email: user.email,
+                role: user.role,
+                isActive: user.isActive
             }
         });
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ message: 'Server error' });
+        res.status(500).json({ message: 'Server error during login' });
     }
 });
 
 // Register route (admin only)
 router.post('/register', async (req, res) => {
     try {
-        const { username, password, role, email, fullName } = req.body;
+        const { name, email, password, role, phone, address } = req.body;
         
         // Check if user already exists
-        const existingUser = await User.findOne({ username });
+        const existingUser = await User.findOne({ email });
         if (existingUser) {
-            return res.status(400).json({ message: 'Username already exists' });
+            return res.status(400).json({ message: 'Email already exists' });
         }
 
         // Create new user
         const user = new User({
-            username,
-            password,
-            role: role || 'USER',
+            name,
             email,
-            fullName
+            password,
+            role: role || 'STAFF',
+            phone,
+            address
         });
 
         await user.save();
@@ -75,27 +94,25 @@ router.post('/register', async (req, res) => {
             message: 'User created successfully',
             user: {
                 id: user._id,
-                username: user.username,
+                name: user.name,
+                email: user.email,
                 role: user.role
             }
         });
     } catch (error) {
+        console.error('Registration error:', error);
         res.status(500).json({ message: 'Server error' });
     }
 });
 
 // Get current user profile
-router.get('/me', authenticateToken, async (req, res) => {
+router.get('/profile', authenticateToken, async (req, res) => {
     try {
         const user = await User.findById(req.user.userId).select('-password');
         if (!user) {
             return res.status(404).json({ message: 'User not found' });
         }
-        res.json({
-            id: user._id,
-            username: user.username,
-            role: user.role
-        });
+        res.json(user);
     } catch (error) {
         console.error('Error fetching user profile:', error);
         res.status(500).json({ message: 'Server error' });

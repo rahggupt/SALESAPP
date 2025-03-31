@@ -2,7 +2,6 @@ const express = require('express');
 const router = express.Router();
 const PurchaseOrder = require('../models/PurchaseOrder');
 const { authenticateToken } = require('../middleware/auth');
-const Medicine = require('../models/Medicine');
 
 // Get all purchase orders
 router.get('/', authenticateToken, async (req, res) => {
@@ -14,7 +13,6 @@ router.get('/', authenticateToken, async (req, res) => {
     const orders = await PurchaseOrder.find()
       .populate('vendorId', 'name')
       .populate('assignee', 'username')
-      .populate('items.medicineId', 'name unit')
       .sort(sortOptions);
     res.json(orders);
   } catch (err) {
@@ -38,8 +36,8 @@ router.post('/', authenticateToken, async (req, res) => {
 
     // Validate items
     for (const item of items) {
-      if (!item.medicineId || !item.quantity || item.quantity <= 0) {
-        return res.status(400).json({ message: 'Each item must have a valid medicine and quantity' });
+      if (!item.name || !item.quantity || item.quantity <= 0 || !item.price || item.price < 0) {
+        return res.status(400).json({ message: 'Each item must have a valid name, quantity, and price' });
       }
     }
 
@@ -58,38 +56,20 @@ router.post('/', authenticateToken, async (req, res) => {
 
     const orderNumber = `PO-${dateStr}-${sequence.toString().padStart(4, '0')}`;
 
-    // Get medicine prices and calculate total
-    const itemsWithPrices = await Promise.all(items.map(async (item) => {
-      const medicine = await Medicine.findById(item.medicineId);
-      if (!medicine) {
-        throw new Error(`Medicine not found: ${item.medicineId}`);
-      }
-      return {
-        medicineId: item.medicineId,
-        quantity: item.quantity,
-        price: medicine.purchasePrice
-      };
-    }));
-
-    console.log(itemsWithPrices);
-    const totalAmount = itemsWithPrices.reduce((sum, item) => sum + (item.quantity * item.price), 0);
-
     // Create new purchase order
     const purchaseOrder = new PurchaseOrder({
       orderNumber,
       vendorId,
-      items: itemsWithPrices,
+      items,
       assignee: assigneeId,
-      status: 'pending',
-      totalAmount
+      status: 'pending'
     });
 
     await purchaseOrder.save();
 
-    // Populate the response with vendor and medicine details
+    // Populate the response with vendor and assignee details
     const populatedOrder = await PurchaseOrder.findById(purchaseOrder._id)
       .populate('vendorId', 'name')
-      .populate('items.medicineId', 'name unit')
       .populate('assignee', 'username');
 
     res.status(201).json(populatedOrder);
@@ -123,7 +103,6 @@ router.patch('/:id/status', authenticateToken, async (req, res) => {
       }
     ).populate([
       { path: 'vendorId', select: 'name' },
-      { path: 'items.medicineId', select: 'name unit' },
       { path: 'assignee', select: 'username' }
     ]);
 
@@ -182,7 +161,6 @@ router.patch('/:id/archive', authenticateToken, async (req, res) => {
       }
     ).populate([
       { path: 'vendorId', select: 'name' },
-      { path: 'items.medicineId', select: 'name unit' },
       { path: 'assignee', select: 'username' }
     ]);
 
@@ -219,7 +197,6 @@ router.patch('/:id/assignee', authenticateToken, async (req, res) => {
       }
     ).populate([
       { path: 'vendorId', select: 'name' },
-      { path: 'items.medicineId', select: 'name unit' },
       { path: 'assignee', select: 'username' }
     ]);
 
@@ -231,6 +208,101 @@ router.patch('/:id/assignee', authenticateToken, async (req, res) => {
   } catch (error) {
     console.error('Error updating purchase order assignee:', error);
     res.status(500).json({ message: 'Error updating purchase order assignee' });
+  }
+});
+
+// @route   PATCH api/purchase-orders/:id/payment
+// @desc    Update purchase order payment status
+// @access  Private (Admin only)
+router.patch('/:id/payment', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ message: 'Access denied. Admin only.' });
+    }
+
+    const { paymentStatus, paidAmount } = req.body;
+    const { id } = req.params;
+
+    if (!['PAID', 'PARTIAL', 'DUE'].includes(paymentStatus)) {
+      return res.status(400).json({ message: 'Invalid payment status. Must be one of: PAID, PARTIAL, DUE' });
+    }
+
+    // Update the order with payment status and amount
+    const updatedOrder = await PurchaseOrder.findByIdAndUpdate(
+      id,
+      { paymentStatus, paidAmount },
+      { 
+        new: true,
+        runValidators: true 
+      }
+    ).populate([
+      { path: 'vendorId', select: 'name' },
+      { path: 'assignee', select: 'username' }
+    ]);
+
+    if (!updatedOrder) {
+      return res.status(404).json({ message: 'Purchase order not found' });
+    }
+
+    res.json(updatedOrder);
+  } catch (error) {
+    console.error('Error updating purchase order payment:', error);
+    res.status(500).json({ message: 'Error updating purchase order payment' });
+  }
+});
+
+// @route   GET api/purchase-orders/payment/summary
+// @desc    Get payment summary for purchase orders
+// @access  Private (Admin only)
+router.get('/payment/summary', authenticateToken, async (req, res) => {
+  try {
+    if (req.user.role !== 'ADMIN') {
+      return res.status(403).json({ message: 'Access denied. Admin only.' });
+    }
+
+    const orders = await PurchaseOrder.find()
+      .populate('vendorId', 'name');
+
+    // Calculate totals
+    const summary = {
+      totalAmount: 0,
+      paidAmount: 0,
+      totalDueAmount: 0,
+      partialAmount: 0,
+      vendors: []
+    };
+
+    // Group by vendor
+    const vendorTotals = {};
+
+    orders.forEach(order => {
+      const orderTotal = order.items.reduce((sum, item) => sum + (item.quantity * item.price), 0);
+      summary.totalAmount += orderTotal;
+      summary.paidAmount += order.paidAmount || 0;
+      summary.totalDueAmount += (orderTotal - (order.paidAmount || 0));
+      if (order.paymentStatus === 'PARTIAL') {
+        summary.partialAmount += orderTotal;
+      }
+
+      // Add to vendor totals
+      if (order.vendorId && order.vendorId.name) {
+        if (!vendorTotals[order.vendorId.name]) {
+          vendorTotals[order.vendorId.name] = 0;
+        }
+        vendorTotals[order.vendorId.name] += (orderTotal - (order.paidAmount || 0));
+      }
+    });
+
+    // Convert vendor totals to array
+    summary.vendors = Object.entries(vendorTotals).map(([name, totalDue]) => ({
+      name,
+      totalDue
+    }));
+
+    res.json(summary);
+  } catch (error) {
+    console.error('Error fetching payment summary:', error);
+    res.status(500).json({ message: 'Error fetching payment summary' });
   }
 });
 

@@ -1,67 +1,61 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
-import axios from 'axios';
+import axios from '../utils/axios';
+
+type UserRole = 'ADMIN' | 'STAFF' | 'CASHIER' | 'VIEWER';
+
+interface User {
+  _id: string;
+  name: string;
+  email: string;
+  role: UserRole;
+  isActive: boolean;
+}
 
 interface AuthContextType {
+  user: User | null;
   token: string | null;
-  user: {
-    _id: string;
-    username: string;
-    role: string;
-  } | null;
   isAdmin: boolean;
-  login: (username: string, password: string) => Promise<void>;
+  login: (email: string, password: string) => Promise<void>;
   logout: () => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export const useAuth = () => {
-  const context = useContext(AuthContext);
-  if (!context) {
-    throw new Error('useAuth must be used within an AuthProvider');
-  }
-  return context;
-};
-
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(localStorage.getItem('token'));
-  const [user, setUser] = useState<AuthContextType['user']>(null);
-
-  const isAdmin = user?.role === 'ADMIN';
+  const [isAdmin, setIsAdmin] = useState<boolean>(false);
 
   useEffect(() => {
-    if (token) {
-      // Set default authorization header for axios
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      // Fetch user data
-      const fetchUser = async () => {
+    const checkAuth = async () => {
+      const storedToken = localStorage.getItem('token');
+      if (storedToken) {
         try {
-          const response = await axios.get('http://localhost:5000/api/auth/me');
+          const response = await axios.get('/api/auth/profile');
           setUser(response.data);
+          setIsAdmin(response.data.role === 'ADMIN');
         } catch (error) {
-          console.error('Error fetching user:', error);
-          logout();
+          console.error('Auth check failed:', error);
+          localStorage.removeItem('token');
+          setToken(null);
+          setUser(null);
+          setIsAdmin(false);
         }
-      };
-      
-      fetchUser();
-    }
-  }, [token]);
+      }
+    };
+    checkAuth();
+  }, []);
 
-  const login = async (username: string, password: string) => {
+  const login = async (email: string, password: string) => {
     try {
-      const response = await axios.post('http://localhost:5000/api/auth/login', {
-        username,
-        password
-      });
-      
-      const { token, user } = response.data;
-      localStorage.setItem('token', token);
-      setToken(token);
-      setUser(user);
+      const response = await axios.post('/api/auth/login', { email, password });
+      const { token: newToken, user: userData } = response.data;
+      localStorage.setItem('token', newToken);
+      setToken(newToken);
+      setUser(userData);
+      setIsAdmin(userData.role === 'ADMIN');
     } catch (error) {
-      console.error('Login error:', error);
+      console.error('Login failed:', error);
       throw error;
     }
   };
@@ -70,12 +64,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.removeItem('token');
     setToken(null);
     setUser(null);
-    delete axios.defaults.headers.common['Authorization'];
+    setIsAdmin(false);
   };
 
   return (
-    <AuthContext.Provider value={{ token, user, isAdmin, login, logout }}>
+    <AuthContext.Provider value={{ user, token, isAdmin, login, logout }}>
       {children}
     </AuthContext.Provider>
   );
-}; 
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
+};
+
+export default AuthContext; 

@@ -39,7 +39,7 @@ const PrescriptionList: React.FC = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   
   const { token, user } = useAuth();
-  const isAdmin = user?.role === 'admin';
+  const isAdmin = user?.role === 'ADMIN';
 
   // Fetch prescriptions
   const fetchPrescriptions = async () => {

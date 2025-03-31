@@ -423,12 +423,13 @@ router.put('/:id/payment', authenticateToken, async (req, res) => {
             return res.status(404).json({ message: 'Medicine not found' });
         }
 
-        // Update payment details
-        medicine.paidAmount = paidAmount;
-        medicine.paymentStatus = paymentStatus;
-        medicine.dueAmount = medicine.purchasePrice - paidAmount;
+        // Validate payment amount
+        if (paidAmount < 0 || paidAmount > medicine.purchasePrice) {
+            return res.status(400).json({ message: 'Invalid payment amount' });
+        }
 
-        await medicine.save();
+        // Update payment using the new method
+        await medicine.updatePayment(paidAmount, paymentStatus);
 
         res.json({
             message: 'Payment status updated successfully',
@@ -458,14 +459,19 @@ router.get('/payment/status', authenticateToken, async (req, res) => {
         const totals = {
             totalPurchasePrice: 0,
             totalPaidAmount: 0,
-            totalDueAmount: 0
+            totalDueAmount: 0,
+            totalProfitMargin: 0
         };
 
         medicines.forEach(medicine => {
             totals.totalPurchasePrice += medicine.purchasePrice;
             totals.totalPaidAmount += medicine.paidAmount;
             totals.totalDueAmount += medicine.dueAmount;
+            totals.totalProfitMargin += medicine.calculateProfitMargin();
         });
+
+        // Calculate averages
+        totals.averageProfitMargin = totals.totalProfitMargin / medicines.length;
 
         res.json({
             medicines,
@@ -474,6 +480,69 @@ router.get('/payment/status', authenticateToken, async (req, res) => {
     } catch (error) {
         console.error('Error fetching medicines by payment status:', error);
         res.status(500).json({ message: 'Error fetching medicines' });
+    }
+});
+
+// Get payment history for a medicine
+router.get('/:id/payment-history', authenticateToken, async (req, res) => {
+    try {
+        const medicine = await Medicine.findById(req.params.id)
+            .select('paymentHistory lastPaymentDate')
+            .populate('vendor', 'name');
+
+        if (!medicine) {
+            return res.status(404).json({ message: 'Medicine not found' });
+        }
+
+        res.json({
+            paymentHistory: medicine.paymentHistory,
+            lastPaymentDate: medicine.lastPaymentDate,
+            vendorName: medicine.vendor.name
+        });
+    } catch (error) {
+        console.error('Error fetching payment history:', error);
+        res.status(500).json({ message: 'Error fetching payment history' });
+    }
+});
+
+// Get payment summary
+router.get('/payment/summary', authenticateToken, async (req, res) => {
+    try {
+        const summary = await Medicine.aggregate([
+            {
+                $match: { isArchived: false }
+            },
+            {
+                $group: {
+                    _id: '$paymentStatus',
+                    count: { $sum: 1 },
+                    totalPurchasePrice: { $sum: '$purchasePrice' },
+                    totalPaidAmount: { $sum: '$paidAmount' },
+                    totalDueAmount: { $sum: '$dueAmount' }
+                }
+            }
+        ]);
+
+        // Calculate overall totals
+        const totals = summary.reduce((acc, curr) => ({
+            totalMedicines: acc.totalMedicines + curr.count,
+            totalPurchasePrice: acc.totalPurchasePrice + curr.totalPurchasePrice,
+            totalPaidAmount: acc.totalPaidAmount + curr.totalPaidAmount,
+            totalDueAmount: acc.totalDueAmount + curr.totalDueAmount
+        }), {
+            totalMedicines: 0,
+            totalPurchasePrice: 0,
+            totalPaidAmount: 0,
+            totalDueAmount: 0
+        });
+
+        res.json({
+            summary,
+            totals
+        });
+    } catch (error) {
+        console.error('Error fetching payment summary:', error);
+        res.status(500).json({ message: 'Error fetching payment summary' });
     }
 });
 
