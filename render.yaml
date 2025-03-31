@@ -24,6 +24,8 @@ services:
     envVars:
       - key: REACT_APP_API_URL
         value: https://sales-app-backend.onrender.com
+      - key: NODE_ENV
+        value: production
     routes:
       - type: rewrite
         source: /*
